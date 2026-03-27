@@ -1,33 +1,38 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-async function isAdmin(userId: string) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", userId)
-    .single();
-
-  return !!data?.is_admin;
-}
-
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
-    const { adminUserId, targetUserId, isActive } = body;
+    const supabase = await createServerClient();
 
-    if (!adminUserId || !targetUserId || typeof isActive !== "boolean") {
-      return NextResponse.json({ error: "Missing data" }, { status: 400 });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const adminOk = await isAdmin(adminUserId);
-    if (!adminOk) {
-      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    const { data: adminProfile } = await supabase
+      .from("profiles")
+      .select("is_admin, role")
+      .eq("id", user.id)
+      .single();
+
+    const isAdmin =
+      !!adminProfile &&
+      (adminProfile.is_admin === true || adminProfile.role === "admin");
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const targetUserId = body?.targetUserId as string;
+    const isActive = body?.isActive as boolean;
+
+    if (!targetUserId || typeof isActive !== "boolean") {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
     const { error } = await supabase
@@ -36,11 +41,12 @@ export async function POST(req: Request) {
       .eq("id", targetUserId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  } catch (error) {
+    console.error("admin update user status error:", error);
+    return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }
