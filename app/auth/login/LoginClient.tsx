@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginClient() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
 
@@ -26,14 +25,13 @@ export default function LoginClient() {
     async function checkSession() {
       try {
         const {
-          data: { user },
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
 
         if (!mounted) return;
 
-        if (user) {
-          router.replace(redirectTarget);
-          router.refresh();
+        if (session?.user) {
+          window.location.href = redirectTarget;
           return;
         }
 
@@ -54,8 +52,7 @@ export default function LoginClient() {
       if (!mounted) return;
 
       if (session?.user) {
-        router.replace(redirectTarget);
-        router.refresh();
+        window.location.href = redirectTarget;
       }
     });
 
@@ -63,7 +60,7 @@ export default function LoginClient() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [router, redirectTarget, supabase]);
+  }, [redirectTarget, supabase]);
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,8 +92,7 @@ export default function LoginClient() {
         return;
       }
 
-      router.replace(redirectTarget);
-      router.refresh();
+      window.location.href = redirectTarget;
     } catch (error) {
       console.error("login error:", error);
       setErrorMessage("Could not sign in. Please try again.");
