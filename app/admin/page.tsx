@@ -105,11 +105,7 @@ function extractStructuredMeta(description?: string | null) {
 
   for (const line of after) {
     const cleaned = line.trim();
-    if (
-      !cleaned ||
-      cleaned === marker ||
-      cleaned.startsWith("---")
-    ) {
+    if (!cleaned || cleaned === marker || cleaned.startsWith("---")) {
       continue;
     }
 
@@ -207,17 +203,13 @@ export default async function AdminPage() {
       .select("id, user_id, company_name, contact_name")
       .in("id", hirerIds);
 
-    hirerNameMap =
-      ((hirers || []) as HirerProfileRow[]).reduce<Record<string, string>>(
-        (acc, item) => {
-          acc[item.id] =
-            item.company_name ||
-            item.contact_name ||
-            "Hirer";
-          return acc;
-        },
-        {}
-      );
+    hirerNameMap = ((hirers || []) as HirerProfileRow[]).reduce<Record<string, string>>(
+      (acc, item) => {
+        acc[item.id] = item.company_name || item.contact_name || "Hirer";
+        return acc;
+      },
+      {}
+    );
   }
 
   const pendingJobs = jobRows.filter((job) => job.status === "pending");
@@ -499,7 +491,9 @@ export default async function AdminPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-slate-500">Other jobs</p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-900">Recently reviewed / active jobs</h2>
+                <h2 className="mt-1 text-2xl font-bold text-slate-900">
+                  Recently reviewed / active jobs
+                </h2>
               </div>
             </div>
 
@@ -619,11 +613,11 @@ export default async function AdminPage() {
                           !item.is_admin &&
                           item.role !== "admin" && (
                             <AdminUserAction
-  adminUserId={user.id}
-  targetUserId={item.id}
-  targetUserName={item.full_name || "User"}
-  isActive={!!item.is_active}
-/>
+                              adminUserId={user.id}
+                              targetUserId={item.id}
+                              targetUserName={item.full_name || "User"}
+                              isActive={!!item.is_active}
+                            />
                           )}
                       </div>
                     </div>
