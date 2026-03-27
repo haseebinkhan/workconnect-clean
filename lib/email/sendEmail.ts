@@ -12,17 +12,13 @@ export async function sendEmail({
   html: string;
 }) {
   try {
-    const { error } = await resend.emails.send({
+    await resend.emails.send({
       from: "WorkConnect <noreply@workconnect.uk>",
       to,
       subject,
       html,
     });
-
-    if (error) {
-      console.error("Email error:", error);
-    }
-  } catch (err) {
-    console.error("Email send failed:", err);
+  } catch (error) {
+    console.error("Email send error:", error);
   }
 }
