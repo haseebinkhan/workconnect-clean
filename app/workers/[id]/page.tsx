@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import DirectContactCard from "@/components/DirectContactCard";
 import WorkerReviewsList from "@/components/reviews/WorkerReviewsList";
 import RequestWorkerCard from "./request-worker-card";
-import SaveWorkerButton from "@/components/workers/SaveWorkerButton";
 
 type PageProps = {
   params: Promise<{
@@ -64,15 +63,17 @@ function buildSlotDateTime(day: string, shift: string) {
     morning: 9,
     afternoon: 14,
     evening: 18,
+    night: 20,
   };
 
   const date = getNextDateForWeekday(dayMap[day] ?? 1);
   date.setHours(hourMap[shift] ?? 9, 0, 0, 0);
 
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function slotLabel(day: string, shift: string) {
@@ -155,18 +156,18 @@ export default async function WorkerProfilePage({
   const reviewerIds = [...new Set((reviewRows || []).map((item) => item.reviewer_id))];
 
   const { data: reviewers } = reviewerIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", reviewerIds)
+    ? await supabase.from("profiles").select("id, full_name").in("id", reviewerIds)
     : { data: [] };
 
-  const reviewerMap = new Map((reviewers || []).map((item) => [item.id, item.full_name]));
+  const reviewerMap = new Map(
+    (reviewers || []).map((item) => [item.id, item.full_name])
+  );
 
   const reviews = (reviewRows || []).map((item) => ({
     id: item.id,
     rating: item.rating,
-    comment: item.comment,
+    comment: item.comment || "",
+    review_text: item.comment || "",
     created_at: item.created_at,
     reviewer_name: reviewerMap.get(item.reviewer_id) || "Hirer",
   }));
@@ -193,20 +194,24 @@ export default async function WorkerProfilePage({
   }
 
   const availability =
-    workerProfile.availability && typeof workerProfile.availability === "object"
-      ? workerProfile.availability
+    workerProfile.availability &&
+    typeof workerProfile.availability === "object" &&
+    !Array.isArray(workerProfile.availability)
+      ? (workerProfile.availability as Record<string, string[]>)
       : {};
 
-  const availabilityDays = Object.keys(availability).filter(
-    (day) => Array.isArray(availability[day]) && availability[day].length > 0
-  );
+  const availabilityDays = Object.keys(availability).filter((day) => {
+    const shifts = availability[day];
+    return Array.isArray(shifts) && shifts.length > 0;
+  });
 
-  const quickSlots = availabilityDays.flatMap((day) =>
-    availability[day].map((shift: string) => ({
+  const quickSlots = availabilityDays.flatMap((day) => {
+    const shifts = Array.isArray(availability[day]) ? availability[day] : [];
+    return shifts.map((shift: string) => ({
       label: slotLabel(day, shift),
       value: buildSlotDateTime(day, shift),
-    }))
-  );
+    }));
+  });
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
@@ -293,7 +298,9 @@ export default async function WorkerProfilePage({
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {workerProfile.rating_avg != null
-                        ? `${Number(workerProfile.rating_avg).toFixed(1)} (${workerProfile.rating_count ?? 0})`
+                        ? `${Number(workerProfile.rating_avg).toFixed(1)} (${
+                            workerProfile.rating_count ?? 0
+                          })`
                         : "No rating yet"}
                     </p>
                   </div>
@@ -355,19 +362,25 @@ export default async function WorkerProfilePage({
                 {availabilityDays.length > 0 ? (
                   <>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {availabilityDays.map((day) => (
-                        <div
-                          key={day}
-                          className="rounded-2xl bg-white p-4 ring-1 ring-slate-200"
-                        >
-                          <p className="text-sm font-semibold text-slate-900">
-                            {titleCase(day)}
-                          </p>
-                          <p className="mt-2 text-sm text-slate-600">
-                            {availability[day].join(", ")}
-                          </p>
-                        </div>
-                      ))}
+                      {availabilityDays.map((day) => {
+                        const shifts = Array.isArray(availability[day])
+                          ? availability[day]
+                          : [];
+
+                        return (
+                          <div
+                            key={day}
+                            className="rounded-2xl bg-white p-4 ring-1 ring-slate-200"
+                          >
+                            <p className="text-sm font-semibold text-slate-900">
+                              {titleCase(day)}
+                            </p>
+                            <p className="mt-2 text-sm text-slate-600">
+                              {shifts.join(", ")}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {workerProfile.availability_notes ? (
@@ -378,7 +391,8 @@ export default async function WorkerProfilePage({
                   </>
                 ) : (
                   <p className="mt-3 text-sm leading-7 text-slate-700">
-                    {workerProfile.availability_notes || "Availability not specified yet."}
+                    {workerProfile.availability_notes ||
+                      "Availability not specified yet."}
                   </p>
                 )}
               </div>
@@ -386,7 +400,9 @@ export default async function WorkerProfilePage({
               {Array.isArray(workerProfile.certifications) &&
               workerProfile.certifications.length > 0 ? (
                 <div className="mt-8 rounded-[1.5rem] bg-slate-50 p-5 sm:p-6">
-                  <h2 className="text-xl font-bold text-slate-900">Certifications</h2>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Certifications
+                  </h2>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {workerProfile.certifications.map((item: string) => (
                       <span
@@ -424,14 +440,17 @@ export default async function WorkerProfilePage({
                       Instant hire slots
                     </h3>
                     <p className="mt-2 text-sm leading-7 text-slate-600">
-                      Choose one of the worker’s availability slots to prefill your meeting time.
+                      Choose one of the worker&apos;s availability slots to prefill
+                      your meeting time.
                     </p>
 
                     <div className="mt-5 grid gap-3">
                       {quickSlots.slice(0, 8).map((slot) => (
                         <a
                           key={slot.value}
-                          href={`/workers/${workerProfile.id}?slot=${encodeURIComponent(slot.value)}`}
+                          href={`/workers/${workerProfile.id}?slot=${encodeURIComponent(
+                            slot.value
+                          )}`}
                           className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
                             selectedSlot === slot.value
                               ? "border-indigo-300 bg-indigo-50 text-indigo-700"
@@ -449,7 +468,9 @@ export default async function WorkerProfilePage({
                   workerId={workerProfile.id}
                   workerUserId={workerProfile.user_id}
                   workerName={profile?.full_name || "Worker"}
-                  areaSlug={workerProfile.area_slug || profile?.area_slug || "belfast"}
+                  areaSlug={
+                    workerProfile.area_slug || profile?.area_slug || "belfast"
+                  }
                   selectedMeetingAt={selectedSlot}
                 />
               </>
@@ -476,7 +497,9 @@ export default async function WorkerProfilePage({
                   {titleCase(profile?.area_slug || workerProfile.area_slug)}
                 </p>
                 <p>
-                  <span className="font-semibold text-slate-900">Open to work:</span>{" "}
+                  <span className="font-semibold text-slate-900">
+                    Open to work:
+                  </span>{" "}
                   {workerProfile.is_open_to_work ? "Yes" : "No"}
                 </p>
                 <p>
