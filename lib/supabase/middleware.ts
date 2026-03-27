@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 type CookieToSet = {
   name: string;
   value: string;
-  options?: Record<string, unknown>;
+  options?: any;
 };
 
 export async function updateSession(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function updateSession(request: NextRequest) {
         setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value);
-            response.cookies.set(name, value, options);
+            response.cookies.set(name, value, options); // ✅ NO SPREAD
           });
         },
       },
