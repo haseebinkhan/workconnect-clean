@@ -6,7 +6,9 @@ export default async function AdminUsersPage() {
 
   const { data: users, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, worker_enabled, hirer_enabled, is_active, is_verified, is_admin, city, area_slug, created_at")
+    .select(
+      "id, full_name, email, worker_enabled, hirer_enabled, is_active, is_verified, is_admin, city, area_slug, created_at"
+    )
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -24,14 +26,18 @@ export default async function AdminUsersPage() {
         <p className="text-sm font-medium text-slate-500">User management</p>
         <h2 className="mt-2 text-2xl font-bold text-slate-900">Accounts</h2>
         <p className="mt-3 text-sm leading-7 text-slate-600">
-          Review account roles and activate or deactivate users when required.
+          Review account roles and activate, deactivate, or delete users when
+          required.
         </p>
       </div>
 
       {users && users.length > 0 ? (
         <div className="grid gap-6">
           {users.map((user) => (
-            <article key={user.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <article
+              key={user.id}
+              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+            >
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -62,7 +68,9 @@ export default async function AdminUsersPage() {
                     )}
                   </div>
 
-                  <p className="mt-2 text-sm text-slate-600">{user.email || "No email"}</p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {user.email || "No email"}
+                  </p>
 
                   <div className="mt-4 grid gap-4 sm:grid-cols-3">
                     <div className="rounded-2xl bg-slate-50 p-4">
@@ -101,7 +109,11 @@ export default async function AdminUsersPage() {
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                     <p className="text-sm font-medium text-slate-500">Actions</p>
                     <div className="mt-4">
-                      <UserActions userId={user.id} isActive={user.is_active} />
+                      <UserActions
+                        userId={user.id}
+                        userName={user.full_name || "Unnamed user"}
+                        isActive={user.is_active}
+                      />
                     </div>
                   </div>
                 </div>
