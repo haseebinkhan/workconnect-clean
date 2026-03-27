@@ -36,6 +36,16 @@ function isAuthPage(pathname: string) {
   );
 }
 
+type CookieOptions = {
+  domain?: string;
+  expires?: Date;
+  httpOnly?: boolean;
+  maxAge?: number;
+  path?: string;
+  sameSite?: "lax" | "strict" | "none" | boolean;
+  secure?: boolean;
+};
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -51,11 +61,11 @@ export async function middleware(request: NextRequest) {
         get(name: string) {
           return request.cookies.get(name)?.value;
         },
-        set(name: string, value: string, options: Record<string, unknown>) {
+        set(name: string, value: string, options: CookieOptions = {}) {
           request.cookies.set({
             name,
             value,
-            ...(options as Parameters<typeof response.cookies.set>[0]),
+            ...options,
           });
 
           response = NextResponse.next({
@@ -67,14 +77,14 @@ export async function middleware(request: NextRequest) {
           response.cookies.set({
             name,
             value,
-            ...(options as Parameters<typeof response.cookies.set>[0]),
+            ...options,
           });
         },
-        remove(name: string, options: Record<string, unknown>) {
+        remove(name: string, options: CookieOptions = {}) {
           request.cookies.set({
             name,
             value: "",
-            ...(options as Parameters<typeof response.cookies.set>[0]),
+            ...options,
           });
 
           response = NextResponse.next({
@@ -86,7 +96,7 @@ export async function middleware(request: NextRequest) {
           response.cookies.set({
             name,
             value: "",
-            ...(options as Parameters<typeof response.cookies.set>[0]),
+            ...options,
           });
         },
       },

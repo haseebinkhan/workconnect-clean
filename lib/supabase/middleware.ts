@@ -23,7 +23,7 @@ export async function updateSession(request: NextRequest) {
         setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value);
-            response.cookies.set(name, value, options); // ✅ NO SPREAD
+            response.cookies.set(name, value, options);
           });
         },
       },
