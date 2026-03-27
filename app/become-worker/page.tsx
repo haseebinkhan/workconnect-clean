@@ -1,5 +1,5 @@
 ﻿import { createClient } from "@/lib/supabase/server";
-import BecomeWorkerForm from "./worker-form";
+import BecomeWorkerForm from "./BecomeWorkerForm";
 
 export default async function BecomeWorkerPage() {
   const supabase = await createClient();
