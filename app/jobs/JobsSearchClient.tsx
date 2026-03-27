@@ -2,17 +2,50 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { JobSearchItem } from "./page";
+
+type JobSearchItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  city: string | null;
+  area_slug: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  currency_code: string | null;
+  created_at: string | null;
+  category_name?: string | null;
+  hirer_name?: string | null;
+  location_type?: string | null;
+  job_type?: string | null;
+};
 
 function formatDate(value?: string | null) {
   if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString([], {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
+}
+
+function formatBudget(job: JobSearchItem) {
+  const currency = job.currency_code || "GBP";
+
+  if (job.budget_min != null && job.budget_max != null) {
+    return `${currency} ${job.budget_min} - ${job.budget_max}`;
+  }
+
+  if (job.budget_min != null) {
+    return `${currency} ${job.budget_min}+`;
+  }
+
+  if (job.budget_max != null) {
+    return `Up to ${currency} ${job.budget_max}`;
+  }
+
+  return "Budget not specified";
 }
 
 export default function JobsSearchClient({
@@ -21,183 +54,176 @@ export default function JobsSearchClient({
   jobs: JobSearchItem[];
 }) {
   const [query, setQuery] = useState("");
-  const [area, setArea] = useState("all");
-  const [sortBy, setSortBy] = useState("newest");
+  const [area, setArea] = useState("");
+  const [category, setCategory] = useState("");
+
+  const categories = useMemo(() => {
+    return Array.from(
+      new Set(
+        jobs
+          .map((job) => job.category_name)
+          .filter((value): value is string => Boolean(value && value.trim()))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
 
   const areas = useMemo(() => {
-    return [...new Set(jobs.map((j) => j.areaSlug).filter(Boolean))].sort();
+    return Array.from(
+      new Set(
+        jobs
+          .map((job) => job.area_slug || job.city)
+          .filter((value): value is string => Boolean(value && value.trim()))
+      )
+    ).sort((a, b) => a.localeCompare(b));
   }, [jobs]);
 
   const filteredJobs = useMemo(() => {
     const q = query.trim().toLowerCase();
 
-    const next = jobs.filter((job) => {
+    return jobs.filter((job) => {
       const matchesQuery =
-        q === "" ||
-        job.title.toLowerCase().includes(q) ||
-        job.description.toLowerCase().includes(q) ||
-        (job.city || "").toLowerCase().includes(q) ||
-        (job.areaSlug || "").toLowerCase().includes(q) ||
-        job.hirerName.toLowerCase().includes(q);
+        !q ||
+        [
+          job.title,
+          job.description || "",
+          job.city || "",
+          job.area_slug || "",
+          job.category_name || "",
+          job.hirer_name || "",
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q);
 
       const matchesArea =
-        area === "all" || (job.areaSlug || "").toLowerCase() === area;
+        !area ||
+        (job.area_slug || "").toLowerCase() === area.toLowerCase() ||
+        (job.city || "").toLowerCase() === area.toLowerCase();
 
-      return matchesQuery && matchesArea;
+      const matchesCategory =
+        !category ||
+        (job.category_name || "").toLowerCase() === category.toLowerCase();
+
+      return matchesQuery && matchesArea && matchesCategory;
     });
-
-    next.sort((a, b) => {
-      if (sortBy === "budget-high") {
-        return (b.budgetMax ?? b.budgetMin ?? 0) - (a.budgetMax ?? a.budgetMin ?? 0);
-      }
-
-      if (sortBy === "budget-low") {
-        return (a.budgetMin ?? a.budgetMax ?? 0) - (b.budgetMin ?? b.budgetMax ?? 0);
-      }
-
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    });
-
-    return next;
-  }, [jobs, query, area, sortBy]);
+  }, [jobs, query, area, category]);
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-      <section className="mx-auto max-w-6xl">
-        <div className="mb-8">
-          <p className="text-sm font-medium text-slate-500">Worker area</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-            Browse jobs
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            Search relevant jobs by keyword and area, then sort by date or budget.
+    <div className="space-y-6">
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="md:col-span-1">
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Search jobs
+            </label>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Job title, city, area, category..."
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Area
+            </label>
+            <select
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+            >
+              <option value="">All areas</option>
+              {areas.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+            >
+              <option value="">All categories</option>
+              {categories.map((item) => (
+                <option key={item} value={item.toLowerCase()}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 text-sm text-slate-500">
+          {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"} found
+        </div>
+      </div>
+
+      {filteredJobs.length === 0 ? (
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-900">No jobs found</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Try changing your search, area, or category filters.
           </p>
         </div>
+      ) : (
+        <div className="space-y-5">
+          {filteredJobs.map((job) => (
+            <article
+              key={job.id}
+              className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-2xl font-bold text-slate-900">
+                      {job.title}
+                    </h2>
 
-        <div className="mb-8 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="xl:col-span-2">
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Search jobs
-              </label>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by title, description, hirer, city, or area"
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+                    {job.category_name ? (
+                      <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                        {job.category_name}
+                      </span>
+                    ) : null}
+                  </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Area
-              </label>
-              <select
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="all">All areas</option>
-                {areas.map((item) => (
-                  <option key={item} value={String(item).toLowerCase()}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-500">
+                    <span>{job.city || job.area_slug || "Location not specified"}</span>
+                    <span>{formatBudget(job)}</span>
+                    {job.created_at ? <span>Posted {formatDate(job.created_at)}</span> : null}
+                  </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Sort by
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="newest">Newest first</option>
-                <option value="budget-high">Highest budget</option>
-                <option value="budget-low">Lowest budget</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"} found
-          </div>
-        </div>
-
-        {filteredJobs.length === 0 ? (
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">No jobs match your search</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Try a different keyword or area.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {filteredJobs.map((job) => (
-              <article
-                key={job.id}
-                className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-bold text-slate-900">{job.title}</h2>
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                    Open
-                  </span>
+                  {job.description ? (
+                    <p className="mt-4 line-clamp-3 text-sm leading-7 text-slate-600">
+                      {job.description}
+                    </p>
+                  ) : (
+                    <p className="mt-4 text-sm text-slate-500">
+                      No description provided.
+                    </p>
+                  )}
                 </div>
 
-                <p className="mt-2 text-sm text-slate-600">{job.hirerName}</p>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Budget
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {job.currencyCode || "GBP"} {job.budgetMin ?? 0}
-                      {job.budgetMax != null ? ` - ${job.budgetMax}` : ""}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Area
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {job.areaSlug || job.city || "Not specified"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4 sm:col-span-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Posted
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatDate(job.createdAt)}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-5 line-clamp-4 text-sm leading-7 text-slate-700">
-                  {job.description}
-                </p>
-
-                <div className="mt-6">
+                <div className="flex shrink-0 items-center">
                   <Link
                     href={`/jobs/${job.id}`}
-                    className="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                    className="inline-flex rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
                   >
-                    View details
+                    View job
                   </Link>
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-    </main>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
