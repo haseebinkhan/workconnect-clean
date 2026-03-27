@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { buildAccess } from "@/lib/access";
-import { sendEmail } from "@/lib/email/sendEmail";
+import { sendEmail } from "@/lib/email/send";
 import { newRequestEmail } from "@/lib/email/templates";
 
 const adminSupabase = createAdminClient(
