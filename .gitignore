@@ -3,3 +3,7 @@
 .env.local
 .env
 .vercel
+
+all_code.txt
+alerts-report.txt
+popup-usage-report.txt
