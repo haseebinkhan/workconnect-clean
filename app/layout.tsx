@@ -34,19 +34,23 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        <PresenceTracker />
+        <ToastProvider>
+          <ConfirmProvider>
+            <PresenceTracker />
 
-        <div className="relative flex min-h-screen flex-col">
-          <NavbarServer />
+            <div className="relative flex min-h-screen flex-col">
+              <NavbarServer />
 
-          <main className="flex-1">
-            <div className="mx-auto w-full max-w-[1600px]">
-              {children}
+              <main className="flex-1">
+                <div className="mx-auto w-full max-w-[1600px]">
+                  {children}
+                </div>
+              </main>
+
+              <Footer />
             </div>
-          </main>
-
-          <Footer />
-        </div>
+          </ConfirmProvider>
+        </ToastProvider>
       </body>
     </html>
   );
