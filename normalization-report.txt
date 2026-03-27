@@ -1,0 +1,25 @@
+﻿=== NORMALIZATION REPORT ===
+
+--- Pattern: booking_messages ---
+C:\Users\haseeb\workconnect\app\api\admin\delete-user\route.ts:249 -> .from("booking_messages")
+C:\Users\haseeb\workconnect\app\api\admin\delete-user\route.ts:252 -> throwIf(error, "delete booking_messages");
+C:\Users\haseeb\workconnect\app\api\delete-user\route.ts:134 -> .from("booking_messages")
+C:\Users\haseeb\workconnect\app\api\delete-user\route.ts:137 -> failIfError(error, "booking_messages delete");
+
+--- Pattern: \.from\("applications"\) ---
+C:\Users\haseeb\workconnect\app\api\admin\delete-user\route.ts:343 -> .from("applications")
+C:\Users\haseeb\workconnect\app\api\admin\delete-user\route.ts:374 -> .from("applications")
+C:\Users\haseeb\workconnect\app\api\delete-user\route.ts:195 -> .from("applications")
+C:\Users\haseeb\workconnect\app\api\delete-user\route.ts:212 -> .from("applications")
+
+--- Pattern: components/jobs/ApplicationActions ---
+No matches found.
+
+--- Pattern: chat-room ---
+No matches found.
+
+--- Pattern: message-form ---
+No matches found.
+
+--- Pattern: action="/api/jobs/apply" ---
+No matches found.

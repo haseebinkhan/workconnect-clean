@@ -1,0 +1,152 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+type ApplicationActionsProps = {
+  applicationId: string;
+  hirerUserId: string;
+  currentStatus: string;
+};
+
+type UpdateResponse = {
+  error?: string;
+  bookingId?: string | null;
+  success?: boolean;
+  nextPath?: string | null;
+};
+
+export default function ApplicationActions({
+  applicationId,
+  hirerUserId,
+  currentStatus,
+}: ApplicationActionsProps) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"accepted" | "rejected" | null>(
+    null
+  );
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const updateStatus = async (action: "accepted" | "rejected") => {
+    setLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/jobs/applications/update-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          applicationId,
+          action,
+          hirerUserId,
+        }),
+      });
+
+      const data = (await response.json()) as UpdateResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not update application status.");
+      }
+
+      setShowConfirm(false);
+      setPendingAction(null);
+      router.refresh();
+
+      if (data.nextPath) {
+        window.setTimeout(() => {
+          router.push(data.nextPath as string);
+        }, 500);
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not update application status."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (currentStatus !== "pending") {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600">
+          Application status: <span className="capitalize">{currentStatus}</span>
+        </div>
+        {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            setPendingAction("accepted");
+            setShowConfirm(true);
+          }}
+          className="inline-flex rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Accept
+        </button>
+
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            setPendingAction("rejected");
+            setShowConfirm(true);
+          }}
+          className="inline-flex rounded-2xl border border-red-300 bg-white px-5 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Reject
+        </button>
+      </div>
+
+      {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+
+      {showConfirm && pendingAction ? (
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <h3 className="text-base font-bold text-slate-900">
+            Confirm {pendingAction === "accepted" ? "acceptance" : "rejection"}
+          </h3>
+
+          <p className="mt-2 text-sm leading-7 text-slate-600">
+            {pendingAction === "accepted"
+              ? "Accepting this worker will create a booking, start the conversation, and close the job."
+              : "Rejecting this worker will keep the job open for other applicants."}
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => updateStatus(pendingAction)}
+              disabled={loading}
+              className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+            >
+              {loading ? "Updating..." : "Confirm"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowConfirm(false);
+                setPendingAction(null);
+              }}
+              disabled={loading}
+              className="inline-flex rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

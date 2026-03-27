@@ -1,0 +1,83 @@
+"use client";
+
+import { useState } from "react";
+
+export default function MessageForm({ bookingId }: { bookingId: string }) {
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleSend = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const trimmed = message.trim();
+    if (!trimmed) return;
+
+    try {
+      setLoading(true);
+      setErrorMessage("");
+
+      const response = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bookingId,
+          content: trimmed,
+        }),
+      });
+
+      const raw = await response.text();
+      let data: { error?: string; success?: boolean } = {};
+
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { error: raw || "Could not send message" };
+      }
+
+      if (!response.ok) {
+        setErrorMessage(data.error || "Could not send message");
+        return;
+      }
+
+      setMessage("");
+    } catch (error) {
+      console.error("send message error:", error);
+      setErrorMessage("Could not send message");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSend} className="mt-8 border-t border-slate-200 pt-6">
+      <label className="mb-2 block text-sm font-medium text-slate-700">
+        Send message
+      </label>
+
+      {errorMessage ? (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="Write your message here..."
+        className="min-h-28 w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-slate-900"
+        required
+      />
+
+      <button
+        type="submit"
+        disabled={loading || !message.trim()}
+        className="mt-4 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "Sending..." : "Send message"}
+      </button>
+    </form>
+  );
+}

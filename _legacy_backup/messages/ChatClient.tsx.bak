@@ -1,0 +1,315 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+type MessageRow = {
+  id: string;
+  booking_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+  delivered: boolean;
+};
+
+type Props = {
+  bookingId: string;
+  currentUserId: string;
+  otherUserId: string;
+  otherUserName: string;
+  initialMessages: MessageRow[];
+};
+
+function MessageTicks({
+  mine,
+  delivered,
+  isRead,
+}: {
+  mine: boolean;
+  delivered: boolean;
+  isRead: boolean;
+}) {
+  if (!mine) return null;
+
+  return <span className="ml-2">{isRead ? "✓✓" : delivered ? "✓✓" : "✓"}</span>;
+}
+
+export default function ChatClient({
+  bookingId,
+  currentUserId,
+  otherUserId,
+  otherUserName,
+  initialMessages,
+}: Props) {
+  const supabase = useMemo(() => createClient(), []);
+  const [messages, setMessages] = useState<MessageRow[]>(initialMessages);
+  const [content, setContent] = useState("");
+  const [sending, setSending] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const presenceTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, otherTyping]);
+
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, [initialMessages]);
+
+  useEffect(() => {
+    const markRead = async () => {
+      await fetch("/api/messages/mark-read", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bookingId,
+          currentUserId,
+        }),
+      });
+    };
+
+    void markRead();
+  }, [bookingId, currentUserId, messages.length]);
+
+  useEffect(() => {
+    const updatePresence = async (isOnline: boolean) => {
+      await fetch("/api/presence/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: currentUserId,
+          isOnline,
+        }),
+      });
+    };
+
+    void updatePresence(true);
+
+    presenceTimer.current = setInterval(() => {
+      void updatePresence(true);
+    }, 20000);
+
+    const handleBeforeUnload = () => {
+      navigator.sendBeacon(
+        "/api/presence/update",
+        new Blob(
+          [JSON.stringify({ userId: currentUserId, isOnline: false })],
+          { type: "application/json" }
+        )
+      );
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      if (presenceTimer.current) clearInterval(presenceTimer.current);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      void updatePresence(false);
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    const messagesChannel = supabase
+      .channel(`messages-room-${bookingId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `booking_id=eq.${bookingId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as MessageRow;
+          setMessages((prev) => {
+            const exists = prev.some((m) => m.id === newMessage.id);
+            return exists ? prev : [...prev, newMessage];
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `booking_id=eq.${bookingId}`,
+        },
+        (payload) => {
+          const updatedMessage = payload.new as MessageRow;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === updatedMessage.id ? updatedMessage : m))
+          );
+        }
+      )
+      .subscribe();
+
+    const typingChannel = supabase.channel(`typing-room-${bookingId}`);
+
+    typingChannel
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (payload.userId === otherUserId) {
+          setOtherTyping(!!payload.isTyping);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(typingChannel);
+    };
+  }, [bookingId, otherUserId, supabase]);
+
+  const sendTyping = async (isTyping: boolean) => {
+    const channel = supabase.channel(`typing-room-${bookingId}`);
+    await channel.subscribe();
+    await channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: {
+        bookingId,
+        userId: currentUserId,
+        isTyping,
+      },
+    });
+    setTimeout(() => {
+      supabase.removeChannel(channel);
+    }, 200);
+  };
+
+  const handleTyping = async (value: string) => {
+    setContent(value);
+    await sendTyping(value.trim().length > 0);
+
+    if (typingTimer.current) {
+      clearTimeout(typingTimer.current);
+    }
+
+    typingTimer.current = setTimeout(() => {
+      void sendTyping(false);
+    }, 1200);
+  };
+
+  const handleSend = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const text = content.trim();
+    if (!text) return;
+
+    setSending(true);
+
+    const response = await fetch("/api/messages/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        bookingId,
+        senderId: currentUserId,
+        content: text,
+      }),
+    });
+
+    const result = await response.json();
+    setSending(false);
+
+    if (!response.ok) {
+      alert(result.error || "Could not send message");
+      return;
+    }
+
+    if (result.message) {
+      setMessages((prev) => {
+        const exists = prev.some((m) => m.id === result.message.id);
+        return exists ? prev : [...prev, result.message];
+      });
+    }
+
+    setContent("");
+    await sendTyping(false);
+  };
+
+  return (
+    <div className="p-4">
+      <div className="h-[480px] overflow-y-auto rounded-3xl bg-slate-50 p-4">
+        <div className="space-y-3">
+          {messages.length === 0 ? (
+            <div className="rounded-2xl bg-white p-6 text-center text-slate-500">
+              No messages yet
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const mine = msg.sender_id === currentUserId;
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                      mine
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-slate-800"
+                    }`}
+                  >
+                    <p className="leading-6">{msg.content}</p>
+                    <p
+                      className={`mt-2 text-[11px] ${
+                        mine ? "text-indigo-100" : "text-slate-400"
+                      }`}
+                    >
+                      {new Date(msg.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      <MessageTicks
+                        mine={mine}
+                        delivered={msg.delivered}
+                        isRead={msg.is_read}
+                      />
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {otherTyping && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+                {otherUserName} is typing...
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      <form onSubmit={handleSend} className="mt-4 flex gap-3">
+        <textarea
+          value={content}
+          onChange={(e) => void handleTyping(e.target.value)}
+          placeholder="Type your message..."
+          rows={3}
+          className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+        />
+        <button
+          type="submit"
+          disabled={sending}
+          className="self-end rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {sending ? "Sending..." : "Send"}
+        </button>
+      </form>
+    </div>
+  );
+}
