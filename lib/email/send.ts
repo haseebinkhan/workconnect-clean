@@ -12,13 +12,22 @@ export async function sendEmail({
   html: string;
 }) {
   try {
-    await resend.emails.send({
+    if (!process.env.RESEND_API_KEY) {
+      console.error("Missing RESEND_API_KEY");
+      return;
+    }
+
+    const { error } = await resend.emails.send({
       from: "WorkConnect <noreply@workconnect.uk>",
       to,
       subject,
       html,
     });
-  } catch (error) {
-    console.error("Email send error:", error);
+
+    if (error) {
+      console.error("Email error:", error);
+    }
+  } catch (err) {
+    console.error("Email send failed:", err);
   }
 }
