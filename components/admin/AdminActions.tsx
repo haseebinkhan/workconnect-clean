@@ -1,24 +1,28 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export function AdminUserAction({
   adminUserId,
   targetUserId,
+  targetUserName,
   isActive,
 }: {
   adminUserId: string;
   targetUserId: string;
+  targetUserName: string;
   isActive: boolean;
 }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [loadingToggle, setLoadingToggle] = useState(false);
+  const [loadingDelete, setLoadingDelete] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const updateUser = async () => {
-    setLoading(true);
+    setLoadingToggle(true);
     setErrorMessage(null);
 
     try {
@@ -54,24 +58,81 @@ export function AdminUserAction({
       console.error("Update user error:", error);
       setErrorMessage("Update failed");
     } finally {
-      setLoading(false);
+      setLoadingToggle(false);
+    }
+  };
+
+  const deleteUser = async () => {
+    setLoadingDelete(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/users/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          adminUserId,
+          userIds: [targetUserId],
+        }),
+      });
+
+      const raw = await response.text();
+      let data: { message?: string; error?: string } = {};
+
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { error: raw || "Unknown server response" };
+      }
+
+      if (!response.ok) {
+        setErrorMessage(data.error || data.message || "Delete failed");
+        return;
+      }
+
+      setShowDeleteConfirm(false);
+      router.refresh();
+    } catch (error) {
+      console.error("Delete user error:", error);
+      setErrorMessage("Delete failed");
+    } finally {
+      setLoadingDelete(false);
     }
   };
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setShowConfirm(true)}
-        disabled={loading}
-        className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
-          isActive
-            ? "bg-red-600 hover:bg-red-700"
-            : "bg-emerald-600 hover:bg-emerald-700"
-        } disabled:cursor-not-allowed disabled:opacity-60`}
-      >
-        {loading ? "Updating..." : isActive ? "Suspend" : "Activate"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setErrorMessage(null);
+            setShowConfirm(true);
+          }}
+          disabled={loadingToggle || loadingDelete}
+          className={`rounded-xl px-4 py-2 text-sm font-semibold text-white transition ${
+            isActive
+              ? "bg-red-600 hover:bg-red-700"
+              : "bg-emerald-600 hover:bg-emerald-700"
+          } disabled:cursor-not-allowed disabled:opacity-60`}
+        >
+          {loadingToggle ? "Updating..." : isActive ? "Suspend" : "Activate"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setErrorMessage(null);
+            setShowDeleteConfirm(true);
+          }}
+          disabled={loadingToggle || loadingDelete}
+          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loadingDelete ? "Deleting..." : "Delete"}
+        </button>
+      </div>
 
       {showConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
@@ -96,7 +157,7 @@ export function AdminUserAction({
               <button
                 type="button"
                 onClick={() => setShowConfirm(false)}
-                disabled={loading}
+                disabled={loadingToggle}
                 className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
               >
                 Cancel
@@ -105,14 +166,60 @@ export function AdminUserAction({
               <button
                 type="button"
                 onClick={updateUser}
-                disabled={loading}
+                disabled={loadingToggle}
                 className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:opacity-60 ${
                   isActive
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-emerald-600 hover:bg-emerald-700"
                 }`}
               >
-                {loading ? "Saving..." : isActive ? "Suspend user" : "Activate user"}
+                {loadingToggle
+                  ? "Saving..."
+                  : isActive
+                  ? "Suspend user"
+                  : "Activate user"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-[2rem] bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-900">Delete user?</h3>
+
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              You are about to permanently delete{" "}
+              <span className="font-semibold text-slate-900">
+                {targetUserName}
+              </span>
+              . This action cannot be undone.
+            </p>
+
+            {errorMessage ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={loadingDelete}
+                className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={deleteUser}
+                disabled={loadingDelete}
+                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60"
+              >
+                {loadingDelete ? "Deleting..." : "Delete user"}
               </button>
             </div>
           </div>
@@ -134,12 +241,15 @@ export function AdminJobAction({
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<"open" | "paused" | "rejected" | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<
+    "open" | "paused" | "rejected" | null
+  >(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [reason, setReason] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const isReasonRequired = pendingStatus === "paused" || pendingStatus === "rejected";
+  const isReasonRequired =
+    pendingStatus === "paused" || pendingStatus === "rejected";
 
   const modalTitle = useMemo(() => {
     if (pendingStatus === "open") return "Approve job?";

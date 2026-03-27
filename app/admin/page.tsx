@@ -619,10 +619,11 @@ export default async function AdminPage() {
                           !item.is_admin &&
                           item.role !== "admin" && (
                             <AdminUserAction
-                              adminUserId={user.id}
-                              targetUserId={item.id}
-                              isActive={!!item.is_active}
-                            />
+  adminUserId={user.id}
+  targetUserId={item.id}
+  targetUserName={item.full_name || "User"}
+  isActive={!!item.is_active}
+/>
                           )}
                       </div>
                     </div>
