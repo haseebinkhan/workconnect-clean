@@ -154,8 +154,8 @@ export default function ProfileForm({
   const [city, setCity] = useState(initialCity);
   const [postcode, setPostcode] = useState(initialPostcode);
   const [areaSlug, setAreaSlug] = useState(initialAreaSlug || "belfast");
-  const [workerEnabled, setWorkerEnabled] = useState(initialWorkerEnabled);
-  const [hirerEnabled, setHirerEnabled] = useState(initialHirerEnabled);
+  const [workerEnabled] = useState(initialWorkerEnabled);
+  const [hirerEnabled] = useState(initialHirerEnabled);
   const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber);
   const [whatsappNumber, setWhatsappNumber] = useState(initialWhatsappNumber);
   const [showPhoneAfterAccept, setShowPhoneAfterAccept] = useState(
@@ -223,8 +223,6 @@ export default function ProfileForm({
         city: city.trim() || null,
         postcode: postcode.trim() || null,
         area_slug: areaSlug,
-        worker_enabled: workerEnabled,
-        hirer_enabled: hirerEnabled,
         phone_number: phoneNumber.trim() || null,
         whatsapp_number: whatsappNumber.trim() || null,
         show_phone_after_accept: showPhoneAfterAccept,
@@ -245,40 +243,22 @@ export default function ProfileForm({
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (workerEnabled) {
-      if (existingWorker?.id) {
-        const { error: workerUpdateError } = await supabase
-          .from("worker_profiles")
-          .update({
-            area_slug: areaSlug,
-            city: city.trim() || null,
-            postcode: postcode.trim() || null,
-            is_open_to_work: true,
-            availability,
-          })
-          .eq("user_id", user.id);
+    if (existingWorker?.id) {
+      const { error: workerUpdateError } = await supabase
+        .from("worker_profiles")
+        .update({
+          area_slug: areaSlug,
+          city: city.trim() || null,
+          postcode: postcode.trim() || null,
+          is_open_to_work: workerEnabled ? true : false,
+          availability,
+        })
+        .eq("user_id", user.id);
 
-        if (workerUpdateError) {
-          setLoading(false);
-          setErrorMessage(workerUpdateError.message);
-          return;
-        }
-      }
-    } else {
-      if (existingWorker?.id) {
-        const { error: workerDisableError } = await supabase
-          .from("worker_profiles")
-          .update({
-            is_open_to_work: false,
-            availability,
-          })
-          .eq("user_id", user.id);
-
-        if (workerDisableError) {
-          setLoading(false);
-          setErrorMessage(workerDisableError.message);
-          return;
-        }
+      if (workerUpdateError) {
+        setLoading(false);
+        setErrorMessage(workerUpdateError.message);
+        return;
       }
     }
 
@@ -287,8 +267,7 @@ export default function ProfileForm({
     router.refresh();
   };
 
-  const handlePasswordUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handlePasswordUpdate = async () => {
     setPasswordLoading(true);
     setPasswordError("");
     setPasswordSuccess("");
@@ -569,42 +548,10 @@ export default function ProfileForm({
 
         <div className="space-y-6">
           <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Marketplace roles</p>
+            <p className="text-sm font-medium text-slate-500">Account modes</p>
             <h2 className="mt-2 text-2xl font-bold text-slate-900">
-              Choose how you use WorkConnect
+              Managed separately
             </h2>
-
-            <div className="mt-6 space-y-4">
-              <label className="flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="pr-4">
-                  <p className="font-semibold text-slate-900">Worker mode</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Appear in local results and receive requests from hirers.
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={workerEnabled}
-                  onChange={(e) => setWorkerEnabled(e.target.checked)}
-                  className="h-5 w-5"
-                />
-              </label>
-
-              <label className="flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="pr-4">
-                  <p className="font-semibold text-slate-900">Hirer mode</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Browse workers, send requests, and manage conversations.
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={hirerEnabled}
-                  onChange={(e) => setHirerEnabled(e.target.checked)}
-                  className="h-5 w-5"
-                />
-              </label>
-            </div>
 
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-medium text-slate-500">Current setup</p>
@@ -616,6 +563,9 @@ export default function ProfileForm({
                   : hirerEnabled
                   ? "You are using Hirer mode."
                   : "No marketplace mode is enabled right now."}
+              </p>
+              <p className="mt-3 text-sm text-slate-600">
+                Use the Account Modes section above to enable or disable Worker and Hirer modes.
               </p>
             </div>
           </div>
@@ -638,7 +588,7 @@ export default function ProfileForm({
               </div>
             ) : null}
 
-            <form onSubmit={handlePasswordUpdate} className="mt-6 space-y-4">
+            <div className="mt-6 space-y-4">
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   New password
@@ -666,13 +616,14 @@ export default function ProfileForm({
               </div>
 
               <button
-                type="submit"
+                type="button"
+                onClick={handlePasswordUpdate}
                 disabled={passwordLoading}
                 className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {passwordLoading ? "Updating..." : "Update password"}
               </button>
-            </form>
+            </div>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
@@ -682,21 +633,17 @@ export default function ProfileForm({
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Save your information to keep your local results, account roles,
+              Save your information to keep your local results, profile details,
               availability, and contact settings up to date.
             </p>
 
             <button
               type="submit"
-              form=""
-              onClick={() => {}}
-              disabled
-              className="hidden"
-            />
-
-            <p className="mt-6 text-sm text-slate-500">
-              Use the main save button below the form to save your profile changes.
-            </p>
+              disabled={loading}
+              className="mt-6 w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "Saving..." : "Save profile"}
+            </button>
           </div>
         </div>
       </form>
