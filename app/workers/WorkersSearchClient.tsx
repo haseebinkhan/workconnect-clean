@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import SaveWorkerButton from "@/components/workers/SaveWorkerButton";
 import type { WorkerSearchItem } from "./page";
-import { NI_LOCATION_OPTIONS, getAreaLabel } from "@/lib/ni-locations";
 
 const DAY_OPTIONS = [
   { value: "all", label: "Any day" },
@@ -15,6 +14,13 @@ const DAY_OPTIONS = [
   { value: "friday", label: "Friday" },
   { value: "saturday", label: "Saturday" },
   { value: "sunday", label: "Sunday" },
+];
+
+const REGION_OPTIONS = [
+  "England",
+  "Northern Ireland",
+  "Scotland",
+  "Wales",
 ];
 
 const DEFAULT_CATEGORY_OPTIONS = [
@@ -102,6 +108,14 @@ function normalizeText(value?: string | null) {
   return (value || "").trim().toLowerCase();
 }
 
+function formatLocation(worker: WorkerSearchItem) {
+  const parts = [worker.city, worker.region, worker.country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (worker.postcode) return worker.postcode;
+  if (worker.areaSlug) return worker.areaSlug;
+  return "Location not specified";
+}
+
 export default function WorkersSearchClient({
   workers,
 }: {
@@ -109,9 +123,10 @@ export default function WorkersSearchClient({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
-  const [area, setArea] = useState("all");
+  const [country, setCountry] = useState("all");
+  const [region, setRegion] = useState("all");
   const [selectedDay, setSelectedDay] = useState("all");
-  const [btPrefix, setBtPrefix] = useState("all");
+  const [postcodeQuery, setPostcodeQuery] = useState("");
 
   const categories = useMemo(() => {
     const dbCategories = workers
@@ -123,39 +138,29 @@ export default function WorkersSearchClient({
     );
   }, [workers]);
 
-  const btOptions = useMemo(() => {
-    const allPrefixes = new Set<string>();
+  const countryOptions = useMemo(() => {
+    const dbCountries = workers
+      .map((w) => w.country)
+      .filter(Boolean) as string[];
 
-    NI_LOCATION_OPTIONS.forEach((item) => {
-      item.btPrefixes.forEach((prefix) => allPrefixes.add(prefix));
-    });
-
-    workers.forEach((worker) => {
-      const postcode = (worker.postcode || "").toUpperCase().replace(/\s+/g, "");
-      const match = postcode.match(/^BT\d{1,2}/);
-      if (match) {
-        allPrefixes.add(match[0]);
-      }
-    });
-
-    return Array.from(allPrefixes).sort((a, b) => {
-      const aNum = Number(a.replace("BT", ""));
-      const bNum = Number(b.replace("BT", ""));
-      return aNum - bNum;
-    });
+    return [...new Set(["United Kingdom", ...dbCountries])].sort((a, b) =>
+      a.localeCompare(b)
+    );
   }, [workers]);
 
-  const filteredBtOptions = useMemo(() => {
-    if (area === "all") return btOptions;
+  const regionOptions = useMemo(() => {
+    const dbRegions = workers
+      .map((w) => w.region)
+      .filter(Boolean) as string[];
 
-    const areaItem = NI_LOCATION_OPTIONS.find((item) => item.value === area);
-    if (!areaItem) return btOptions;
-
-    return btOptions.filter((prefix) => areaItem.btPrefixes.includes(prefix));
-  }, [btOptions, area]);
+    return [...new Set([...REGION_OPTIONS, ...dbRegions])].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [workers]);
 
   const filteredWorkers = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const postcodeSearch = postcodeQuery.trim().toLowerCase();
 
     return workers.filter((worker) => {
       const haystack = [
@@ -163,6 +168,8 @@ export default function WorkersSearchClient({
         worker.headline || "",
         worker.description || "",
         worker.category || "",
+        worker.country || "",
+        worker.region || "",
         worker.city || "",
         worker.areaSlug || "",
         worker.postcode || "",
@@ -178,21 +185,32 @@ export default function WorkersSearchClient({
           ? true
           : normalizeText(worker.category) === normalizeText(category);
 
-      const areaMatch =
-        area === "all" ? true : normalizeText(worker.areaSlug) === normalizeText(area);
+      const countryMatch =
+        country === "all"
+          ? true
+          : normalizeText(worker.country) === normalizeText(country);
+
+      const regionMatch =
+        region === "all"
+          ? true
+          : normalizeText(worker.region) === normalizeText(region);
 
       const availabilityMatch = isAvailableOnDay(worker, selectedDay);
 
-      const normalizedPostcode = (worker.postcode || "")
-        .toUpperCase()
-        .replace(/\s+/g, "");
+      const postcodeMatch = postcodeSearch
+        ? normalizeText(worker.postcode).includes(postcodeSearch)
+        : true;
 
-      const btMatch =
-        btPrefix === "all" ? true : normalizedPostcode.startsWith(btPrefix);
-
-      return queryMatch && categoryMatch && areaMatch && availabilityMatch && btMatch;
+      return (
+        queryMatch &&
+        categoryMatch &&
+        countryMatch &&
+        regionMatch &&
+        availabilityMatch &&
+        postcodeMatch
+      );
     });
-  }, [workers, query, category, area, selectedDay, btPrefix]);
+  }, [workers, query, category, country, region, selectedDay, postcodeQuery]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
@@ -200,11 +218,15 @@ export default function WorkersSearchClient({
         <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500">Premium worker profiles</p>
-              <h1 className="mt-2 text-3xl font-bold text-slate-900">Find workers</h1>
+              <p className="text-sm font-medium text-slate-500">
+                Premium worker profiles
+              </p>
+              <h1 className="mt-2 text-3xl font-bold text-slate-900">
+                Find workers
+              </h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-                Search workers across Northern Ireland by area, BT postcode,
-                category, skills, and availability.
+                Search workers across the United Kingdom by location, category,
+                skills, and availability.
               </p>
             </div>
 
@@ -216,7 +238,7 @@ export default function WorkersSearchClient({
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 lg:grid-cols-[1.5fr_1fr_1fr_1fr_1fr]">
+          <div className="mt-8 grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Search
@@ -231,36 +253,17 @@ export default function WorkersSearchClient({
 
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                NI area
+                Country
               </label>
               <select
-                value={area}
-                onChange={(e) => {
-                  const nextArea = e.target.value;
-                  setArea(nextArea);
-
-                  if (nextArea === "all") {
-                    return;
-                  }
-
-                  const areaItem = NI_LOCATION_OPTIONS.find(
-                    (item) => item.value === nextArea
-                  );
-
-                  if (
-                    btPrefix !== "all" &&
-                    areaItem &&
-                    !areaItem.btPrefixes.includes(btPrefix)
-                  ) {
-                    setBtPrefix("all");
-                  }
-                }}
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
                 className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
               >
-                <option value="all">All Northern Ireland</option>
-                {NI_LOCATION_OPTIONS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
+                <option value="all">All countries</option>
+                {countryOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
                   </option>
                 ))}
               </select>
@@ -268,20 +271,32 @@ export default function WorkersSearchClient({
 
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                BT postcode
+                Nation / region
               </label>
               <select
-                value={btPrefix}
-                onChange={(e) => setBtPrefix(e.target.value)}
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
                 className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
               >
-                <option value="all">All BT areas</option>
-                {filteredBtOptions.map((prefix) => (
-                  <option key={prefix} value={prefix}>
-                    {prefix}
+                <option value="all">All regions</option>
+                {regionOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Postcode
+              </label>
+              <input
+                value={postcodeQuery}
+                onChange={(e) => setPostcodeQuery(e.target.value.toUpperCase())}
+                placeholder="e.g. BT7"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 uppercase outline-none transition focus:border-indigo-500"
+              />
             </div>
 
             <div>
@@ -365,16 +380,16 @@ export default function WorkersSearchClient({
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Area
+                      Location
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {getAreaLabel(worker.areaSlug)}
+                      {formatLocation(worker)}
                     </p>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      BT postcode
+                      Postcode
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {worker.postcode || "Not specified"}
@@ -430,9 +445,11 @@ export default function WorkersSearchClient({
           ) : (
             <div className="md:col-span-2 xl:col-span-3">
               <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
-                <h3 className="text-2xl font-bold text-slate-900">No workers found</h3>
+                <h3 className="text-2xl font-bold text-slate-900">
+                  No workers found
+                </h3>
                 <p className="mt-3 text-slate-600">
-                  Try changing area, BT postcode, category, or availability.
+                  Try changing location, postcode, category, or availability.
                 </p>
               </div>
             </div>

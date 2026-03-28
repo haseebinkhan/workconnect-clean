@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ApplyJobButton from "@/components/jobs/ApplyJobButton";
-import { autoCloseExpiredJobs } from "@/lib/jobs/autoCloseExpiredJobs";
 
 type PageProps = {
   params: Promise<{
@@ -28,6 +27,42 @@ function isExpired(expiresAt?: string | null) {
   return new Date(expiresAt).getTime() <= Date.now();
 }
 
+function formatBudget(
+  budgetMin?: number | null,
+  budgetMax?: number | null,
+  currencyCode?: string | null
+) {
+  const currency = currencyCode || "GBP";
+
+  if (budgetMin != null && budgetMax != null) {
+    return `${currency} ${budgetMin} - ${budgetMax}`;
+  }
+
+  if (budgetMin != null) {
+    return `${currency} ${budgetMin}+`;
+  }
+
+  if (budgetMax != null) {
+    return `Up to ${currency} ${budgetMax}`;
+  }
+
+  return "Not specified";
+}
+
+function formatLocation(job: {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  area_slug?: string | null;
+}) {
+  const parts = [job.city, job.region, job.country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (job.postcode) return job.postcode;
+  if (job.area_slug) return job.area_slug;
+  return "Local area";
+}
+
 export default async function JobDetailsPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
@@ -48,7 +83,10 @@ export default async function JobDetailsPage({ params }: PageProps) {
         budget_max,
         currency_code,
         location_type,
+        country,
+        region,
         city,
+        postcode,
         area_slug,
         status,
         visibility,
@@ -143,19 +181,18 @@ export default async function JobDetailsPage({ params }: PageProps) {
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Budget</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {job.budget_min != null || job.budget_max != null
-                    ? `${job.currency_code ?? "GBP"} ${job.budget_min ?? 0} - ${
-                        job.budget_max ?? 0
-                      }`
-                    : "Not specified"}
+                  {formatBudget(job.budget_min, job.budget_max, job.currency_code)}
                 </p>
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Location</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {job.city || job.area_slug || "Local area"}
+                  {formatLocation(job)}
                 </p>
+                {job.postcode ? (
+                  <p className="mt-1 text-xs text-slate-500">{job.postcode}</p>
+                ) : null}
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-4">

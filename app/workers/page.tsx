@@ -11,6 +11,8 @@ export type WorkerSearchItem = {
   headline: string | null;
   description: string | null;
   category: string | null;
+  country: string | null;
+  region: string | null;
   city: string | null;
   areaSlug: string | null;
   postcode: string | null;
@@ -66,6 +68,7 @@ export default async function WorkersPage() {
       headline,
       description,
       category,
+      country,
       city,
       area_slug,
       postcode,
@@ -77,11 +80,13 @@ export default async function WorkersPage() {
       jobs_completed,
       is_featured,
       is_open_to_work,
+      is_public,
       availability,
       availability_notes,
       certifications
     `)
     .eq("is_open_to_work", true)
+    .eq("is_public", true)
     .order("is_featured", { ascending: false })
     .order("updated_at", { ascending: false });
 
@@ -94,7 +99,7 @@ export default async function WorkersPage() {
   const { data: profiles } = workerUserIds.length
     ? await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url")
+        .select("id, full_name, avatar_url, region")
         .in("id", workerUserIds)
     : { data: [] };
 
@@ -108,23 +113,25 @@ export default async function WorkersPage() {
       userId: worker.user_id,
       fullName: person?.full_name || "Worker",
       avatarUrl: person?.avatar_url || null,
-      headline: worker.headline,
-      description: worker.description,
-      category: worker.category,
-      city: worker.city,
-      areaSlug: worker.area_slug,
+      headline: worker.headline || null,
+      description: worker.description || null,
+      category: worker.category || null,
+      country: worker.country || "United Kingdom",
+      region: person?.region || null,
+      city: worker.city || null,
+      areaSlug: worker.area_slug || null,
       postcode: worker.postcode || null,
-      hourlyRate: worker.hourly_rate,
-      hourlyRateMin: worker.hourly_rate_min,
-      hourlyRateMax: worker.hourly_rate_max,
-      ratingAvg: worker.rating_avg,
-      ratingCount: worker.rating_count,
-      jobsCompleted: worker.jobs_completed,
+      hourlyRate: worker.hourly_rate ?? null,
+      hourlyRateMin: worker.hourly_rate_min ?? null,
+      hourlyRateMax: worker.hourly_rate_max ?? null,
+      ratingAvg: worker.rating_avg ?? null,
+      ratingCount: worker.rating_count ?? null,
+      jobsCompleted: worker.jobs_completed ?? null,
       isFeatured: !!worker.is_featured,
       isOpenToWork: !!worker.is_open_to_work,
       availability:
         worker.availability && typeof worker.availability === "object"
-          ? worker.availability
+          ? (worker.availability as Record<string, string[]>)
           : {},
       availabilityNotes: worker.availability_notes || null,
       certifications: Array.isArray(worker.certifications)

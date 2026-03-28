@@ -13,6 +13,10 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
+function slugifyArea(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createServerClient();
@@ -30,17 +34,40 @@ export async function POST(req: Request) {
     const title = typeof body?.title === "string" ? body.title.trim() : "";
     const description =
       typeof body?.description === "string" ? body.description.trim() : "";
-    const areaSlug =
+
+    const country =
+      typeof body?.country === "string" && body.country.trim()
+        ? body.country.trim()
+        : "United Kingdom";
+
+    const region =
+      typeof body?.region === "string" ? body.region.trim() : "";
+
+    const city =
+      typeof body?.city === "string" ? body.city.trim() : "";
+
+    const postcode =
+      typeof body?.postcode === "string"
+        ? body.postcode.trim().toUpperCase()
+        : "";
+
+    const rawAreaSlug =
       typeof body?.areaSlug === "string" ? body.areaSlug.trim() : "";
-    const city = typeof body?.city === "string" ? body.city.trim() : "";
+
+    const areaSlug =
+      rawAreaSlug || slugifyArea(city || region || "united-kingdom");
+
     const budgetMin =
       typeof body?.budgetMin === "number" ? body.budgetMin : null;
+
     const budgetMax =
       typeof body?.budgetMax === "number" ? body.budgetMax : null;
+
     const currencyCode =
       typeof body?.currencyCode === "string" && body.currencyCode.trim()
         ? body.currencyCode.trim().toUpperCase()
         : "GBP";
+
     const locationType =
       typeof body?.locationType === "string" && body.locationType.trim()
         ? body.locationType.trim()
@@ -57,9 +84,30 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!areaSlug) {
+    if (!country) {
       return NextResponse.json(
-        { error: "Area is required." },
+        { error: "Country is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!region) {
+      return NextResponse.json(
+        { error: "Region is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!city) {
+      return NextResponse.json(
+        { error: "City is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!postcode) {
+      return NextResponse.json(
+        { error: "Postcode is required." },
         { status: 400 }
       );
     }
@@ -98,7 +146,10 @@ export async function POST(req: Request) {
         title,
         description,
         area_slug: areaSlug,
-        city: city || null,
+        country,
+        region,
+        city,
+        postcode,
         budget_min: budgetMin,
         budget_max: budgetMax,
         currency_code: currencyCode,
@@ -133,6 +184,11 @@ export async function POST(req: Request) {
           meta: {
             job_id: createdJob.id,
             hirer_user_id: user.id,
+            country,
+            region,
+            city,
+            postcode,
+            area_slug: areaSlug,
             expires_at: createdJob.expires_at,
           },
         }))

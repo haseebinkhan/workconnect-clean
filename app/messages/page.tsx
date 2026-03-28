@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DeleteChatButton from "@/components/messages/DeleteChatButton";
 
-
 function formatDateTime(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -22,6 +21,37 @@ function compactText(value?: string | null, max = 120) {
   if (!text) return "";
   if (text.length <= max) return text;
   return `${text.slice(0, max).trim()}...`;
+}
+
+function formatLocation(input: {
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postcode?: string | null;
+  area_slug?: string | null;
+}) {
+  const parts = [input.city, input.region, input.country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (input.postcode) return input.postcode;
+  if (input.area_slug) return input.area_slug;
+  return "Location not specified";
+}
+
+function statusClasses(status?: string | null) {
+  switch ((status || "").toLowerCase()) {
+    case "accepted":
+      return "bg-emerald-50 text-emerald-700";
+    case "in_progress":
+      return "bg-indigo-50 text-indigo-700";
+    case "worker_marked_done":
+      return "bg-violet-50 text-violet-700";
+    case "completed":
+      return "bg-sky-50 text-sky-700";
+    case "cancelled":
+      return "bg-rose-50 text-rose-700";
+    default:
+      return "bg-amber-50 text-amber-700";
+  }
 }
 
 export default async function MessagesPage() {
@@ -50,6 +80,10 @@ export default async function MessagesPage() {
       hirer_user_id,
       worker_user_id,
       status,
+      city,
+      country,
+      postcode,
+      area_slug,
       created_at,
       updated_at,
       deleted_at
@@ -159,6 +193,13 @@ export default async function MessagesPage() {
               const otherProfile = profileMap.get(otherUserId);
               const latestMessage = latestVisibleMessageByBooking.get(booking.id);
 
+              const bookingLocation = formatLocation({
+                city: booking.city,
+                country: booking.country,
+                postcode: booking.postcode,
+                area_slug: booking.area_slug,
+              });
+
               return (
                 <div
                   key={booking.id}
@@ -171,13 +212,22 @@ export default async function MessagesPage() {
                           <h2 className="text-xl font-bold text-slate-900">
                             {otherProfile?.full_name || "Recipient"}
                           </h2>
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClasses(
+                              booking.status
+                            )}`}
+                          >
                             {booking.status}
                           </span>
                         </div>
 
-                        <p className="mt-2 text-sm text-slate-500">
+                        <p className="mt-2 text-sm font-medium text-slate-500">
                           {booking.title || "Conversation"}
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {bookingLocation}
                         </p>
 
                         <p className="mt-3 text-sm leading-6 text-slate-600">

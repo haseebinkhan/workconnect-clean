@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import JobApplicationActions from "@/components/JobApplicationActions";
-import { autoCloseExpiredJobs } from "@/lib/jobs/autoCloseExpiredJobs";
 
 type SearchParamsType = Promise<{
   job?: string;
@@ -55,6 +54,42 @@ function appStatusClasses(status?: string | null) {
     default:
       return "bg-amber-50 text-amber-700 border-amber-200";
   }
+}
+
+function formatBudget(
+  budgetMin?: number | null,
+  budgetMax?: number | null,
+  currencyCode?: string | null
+) {
+  const currency = currencyCode || "GBP";
+
+  if (budgetMin != null && budgetMax != null) {
+    return `${currency} ${budgetMin} - ${budgetMax}`;
+  }
+
+  if (budgetMin != null) {
+    return `${currency} ${budgetMin}+`;
+  }
+
+  if (budgetMax != null) {
+    return `Up to ${currency} ${budgetMax}`;
+  }
+
+  return "Not specified";
+}
+
+function formatLocation(input: {
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postcode?: string | null;
+  area_slug?: string | null;
+}) {
+  const parts = [input.city, input.region, input.country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (input.postcode) return input.postcode;
+  if (input.area_slug) return input.area_slug;
+  return "Local area";
 }
 
 export default async function MyJobPostsPage({
@@ -116,7 +151,10 @@ export default async function MyJobPostsPage({
       budget_max,
       currency_code,
       location_type,
+      country,
+      region,
       city,
+      postcode,
       area_slug,
       created_at,
       updated_at,
@@ -180,7 +218,9 @@ export default async function MyJobPostsPage({
           headline,
           description,
           category,
+          country,
           city,
+          postcode,
           area_slug,
           hourly_rate,
           rating_avg,
@@ -202,7 +242,10 @@ export default async function MyJobPostsPage({
           id,
           full_name,
           email,
+          country,
+          region,
           city,
+          postcode,
           area_slug
         `)
         .in("id", workerUserIds)
@@ -283,8 +326,11 @@ export default async function MyJobPostsPage({
                     <div className="rounded-2xl bg-slate-50 p-4">
                       <p className="text-sm text-slate-500">Location</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {job.city || job.area_slug || "Local area"}
+                        {formatLocation(job)}
                       </p>
+                      {job.postcode ? (
+                        <p className="mt-1 text-xs text-slate-500">{job.postcode}</p>
+                      ) : null}
                     </div>
 
                     <div className="rounded-2xl bg-slate-50 p-4">
@@ -297,11 +343,7 @@ export default async function MyJobPostsPage({
                     <div className="rounded-2xl bg-slate-50 p-4">
                       <p className="text-sm text-slate-500">Budget</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {job.budget_min != null || job.budget_max != null
-                          ? `${job.currency_code || "GBP"} ${job.budget_min ?? 0} - ${
-                              job.budget_max ?? 0
-                            }`
-                          : "Not specified"}
+                        {formatBudget(job.budget_min, job.budget_max, job.currency_code)}
                       </p>
                     </div>
 
@@ -334,6 +376,14 @@ export default async function MyJobPostsPage({
                         const profile = worker?.user_id
                           ? profileMap.get(worker.user_id)
                           : null;
+
+                        const workerLocation = formatLocation({
+                          city: worker?.city || profile?.city,
+                          region: profile?.region,
+                          country: worker?.country || profile?.country || "United Kingdom",
+                          postcode: worker?.postcode || profile?.postcode,
+                          area_slug: worker?.area_slug || profile?.area_slug,
+                        });
 
                         return (
                           <div
@@ -382,12 +432,13 @@ export default async function MyJobPostsPage({
                                   <div className="rounded-2xl bg-white p-4">
                                     <p className="text-sm text-slate-500">Location</p>
                                     <p className="mt-1 text-sm font-semibold text-slate-900">
-                                      {worker?.city ||
-                                        profile?.city ||
-                                        worker?.area_slug ||
-                                        profile?.area_slug ||
-                                        "Not provided"}
+                                      {workerLocation}
                                     </p>
+                                    {worker?.postcode || profile?.postcode ? (
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {worker?.postcode || profile?.postcode}
+                                      </p>
+                                    ) : null}
                                   </div>
 
                                   <div className="rounded-2xl bg-white p-4">

@@ -31,14 +31,25 @@ function safeExternalUrl(url?: string | null) {
   const trimmed = url.trim();
   if (!trimmed) return null;
 
-  if (
-    trimmed.startsWith("http://") ||
-    trimmed.startsWith("https://")
-  ) {
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     return trimmed;
   }
 
   return null;
+}
+
+function formatLocation(input: {
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postcode?: string | null;
+  area_slug?: string | null;
+}) {
+  const parts = [input.city, input.region, input.country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (input.postcode) return input.postcode;
+  if (input.area_slug) return input.area_slug;
+  return "Not specified";
 }
 
 export default async function MyApplicationsPage() {
@@ -135,7 +146,10 @@ export default async function MyApplicationsPage() {
           title,
           description,
           status,
+          country,
+          region,
           city,
+          postcode,
           area_slug,
           currency_code,
           budget_min,
@@ -215,8 +229,21 @@ export default async function MyApplicationsPage() {
                         <div className="rounded-2xl bg-slate-50 p-4">
                           <p className="text-sm text-slate-500">Location</p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {job?.city || job?.area_slug || "Not specified"}
+                            {job
+                              ? formatLocation({
+                                  city: job.city,
+                                  region: job.region,
+                                  country: job.country,
+                                  postcode: job.postcode,
+                                  area_slug: job.area_slug,
+                                })
+                              : "Not specified"}
                           </p>
+                          {job?.postcode ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              {job.postcode}
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="rounded-2xl bg-slate-50 p-4">

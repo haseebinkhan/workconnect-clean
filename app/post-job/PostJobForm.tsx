@@ -10,20 +10,45 @@ type AreaItem = {
   region?: string | null;
 };
 
-const BT_POSTCODES = Array.from({ length: 94 }, (_, i) => `BT${i + 1}`);
+const UK_COUNTRIES = [
+  { value: "United Kingdom", label: "United Kingdom" },
+];
+
+const UK_REGIONS = [
+  "England",
+  "Northern Ireland",
+  "Scotland",
+  "Wales",
+];
+
+function slugifyArea(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "-");
+}
 
 export default function PostJobForm({
   areas,
+  regions,
+  defaultCountry,
+  defaultRegion,
+  defaultCity,
 }: {
   areas: AreaItem[];
+  regions?: string[];
+  defaultCountry?: string;
+  defaultRegion?: string;
+  defaultCity?: string;
 }) {
   const router = useRouter();
 
+  const regionOptions = regions && regions.length > 0 ? regions : UK_REGIONS;
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [areaSlug, setAreaSlug] = useState("");
+  const [country, setCountry] = useState(defaultCountry || "United Kingdom");
+  const [region, setRegion] = useState(defaultRegion || "Northern Ireland");
+  const [city, setCity] = useState(defaultCity || "");
   const [postcode, setPostcode] = useState("");
-  const [city, setCity] = useState("");
+  const [areaSlug, setAreaSlug] = useState("");
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -34,11 +59,13 @@ export default function PostJobForm({
     return (
       title.trim().length > 0 &&
       description.trim().length > 0 &&
-      areaSlug.trim().length > 0 &&
+      country.trim().length > 0 &&
+      region.trim().length > 0 &&
+      city.trim().length > 0 &&
       postcode.trim().length > 0 &&
       !submitting
     );
-  }, [title, description, areaSlug, postcode, submitting]);
+  }, [title, description, country, region, city, postcode, submitting]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,13 +80,23 @@ export default function PostJobForm({
       return;
     }
 
-    if (!areaSlug.trim()) {
-      setErrorMessage("Please select an area.");
+    if (!country.trim()) {
+      setErrorMessage("Please select a country.");
+      return;
+    }
+
+    if (!region.trim()) {
+      setErrorMessage("Please select a nation or region.");
+      return;
+    }
+
+    if (!city.trim()) {
+      setErrorMessage("Please enter a city or town.");
       return;
     }
 
     if (!postcode.trim()) {
-      setErrorMessage("Please select a BT postcode.");
+      setErrorMessage("Please enter a postcode.");
       return;
     }
 
@@ -83,9 +120,8 @@ export default function PostJobForm({
       setErrorMessage("");
       setSuccessMessage("");
 
-      const locationValue = city.trim()
-        ? `${city.trim()} - ${postcode}`
-        : postcode;
+      const computedAreaSlug =
+        areaSlug.trim() || slugifyArea(city.trim() || region.trim());
 
       const res = await fetch("/api/jobs/create", {
         method: "POST",
@@ -95,8 +131,11 @@ export default function PostJobForm({
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim(),
-          areaSlug,
-          city: locationValue,
+          areaSlug: computedAreaSlug,
+          country: country.trim(),
+          region: region.trim(),
+          city: city.trim(),
+          postcode: postcode.trim().toUpperCase(),
           budgetMin: budgetMin === "" ? null : Number(budgetMin),
           budgetMax: budgetMax === "" ? null : Number(budgetMax),
           currencyCode: "GBP",
@@ -116,9 +155,11 @@ export default function PostJobForm({
 
       setTitle("");
       setDescription("");
-      setAreaSlug("");
+      setCountry(defaultCountry || "United Kingdom");
+      setRegion(defaultRegion || "Northern Ireland");
+      setCity(defaultCity || "");
       setPostcode("");
-      setCity("");
+      setAreaSlug("");
       setBudgetMin("");
       setBudgetMax("");
 
@@ -180,17 +221,16 @@ export default function PostJobForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Area
+            Country
           </label>
           <select
-            value={areaSlug}
-            onChange={(e) => setAreaSlug(e.target.value)}
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
             className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            <option value="">Select an area</option>
-            {areas.map((area) => (
-              <option key={area.id} value={area.slug}>
-                {area.name}
+            {UK_COUNTRIES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
               </option>
             ))}
           </select>
@@ -198,38 +238,79 @@ export default function PostJobForm({
 
         <div>
           <label className="mb-2 block text-sm font-semibold text-slate-700">
-            BT postcode
+            Nation / region
           </label>
           <select
-            value={postcode}
-            onChange={(e) => setPostcode(e.target.value)}
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
             className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            <option value="">Select BT postcode</option>
-            {BT_POSTCODES.map((code) => (
-              <option key={code} value={code}>
-                {code}
+            <option value="">Select region</option>
+            {regionOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
               </option>
             ))}
           </select>
         </div>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            City / town
+          </label>
+          <input
+            type="text"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="e.g. Belfast"
+            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            Postcode
+          </label>
+          <input
+            type="text"
+            value={postcode}
+            onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+            placeholder="e.g. BT7 1NN"
+            className="w-full rounded-2xl border border-slate-300 px-4 py-3 uppercase text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+      </div>
+
       <div>
         <label className="mb-2 block text-sm font-semibold text-slate-700">
-          City / town
+          Internal area slug
         </label>
         <input
           type="text"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          placeholder="Optional, e.g. Belfast"
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
+          value={areaSlug}
+          onChange={(e) => setAreaSlug(e.target.value)}
+          placeholder="Optional. Auto-generated if left blank."
+          className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <p className="mt-2 text-xs text-slate-500">
-          This is optional. The selected BT postcode will still be saved.
+          This is kept for compatibility with the current project. City and region
+          are now the main location fields.
         </p>
       </div>
+
+      {areas.length > 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-800">
+            Existing area records detected
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Your project still supports legacy area data in the background. New
+            UK-ready job posts will primarily use country, region, city, and postcode.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>

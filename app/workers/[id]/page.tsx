@@ -80,6 +80,26 @@ function slotLabel(day: string, shift: string) {
   return `${titleCase(day)} • ${titleCase(shift)}`;
 }
 
+function formatLocation({
+  country,
+  region,
+  city,
+  postcode,
+  areaSlug,
+}: {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  areaSlug?: string | null;
+}) {
+  const parts = [city, region, country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (postcode) return postcode;
+  if (areaSlug) return titleCase(areaSlug);
+  return "Not specified";
+}
+
 export default async function WorkerProfilePage({
   params,
   searchParams,
@@ -102,7 +122,9 @@ export default async function WorkerProfilePage({
       headline,
       description,
       category,
+      country,
       city,
+      postcode,
       area_slug,
       hourly_rate,
       hourly_rate_min,
@@ -130,7 +152,10 @@ export default async function WorkerProfilePage({
       full_name,
       avatar_url,
       bio,
+      country,
+      region,
       city,
+      postcode,
       area_slug,
       phone_number,
       whatsapp_number,
@@ -213,6 +238,20 @@ export default async function WorkerProfilePage({
     }));
   });
 
+  const displayCountry = profile?.country || workerProfile.country || "United Kingdom";
+  const displayRegion = profile?.region || null;
+  const displayCity = profile?.city || workerProfile.city || null;
+  const displayPostcode = profile?.postcode || workerProfile.postcode || null;
+  const displayAreaSlug = profile?.area_slug || workerProfile.area_slug || null;
+
+  const displayLocation = formatLocation({
+    country: displayCountry,
+    region: displayRegion,
+    city: displayCity,
+    postcode: displayPostcode,
+    areaSlug: displayAreaSlug,
+  });
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-7xl">
@@ -269,9 +308,9 @@ export default async function WorkerProfilePage({
                         </span>
                       ) : null}
 
-                      {workerProfile.area_slug ? (
+                      {displayRegion ? (
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          {titleCase(workerProfile.area_slug)}
+                          {displayRegion}
                         </span>
                       ) : null}
                     </div>
@@ -319,11 +358,14 @@ export default async function WorkerProfilePage({
 
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    City
+                    Location
                   </p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
-                    {profile?.city || workerProfile.city || "Not specified"}
+                    {displayLocation}
                   </p>
+                  {displayPostcode ? (
+                    <p className="mt-1 text-xs text-slate-500">{displayPostcode}</p>
+                  ) : null}
                 </div>
 
                 <div className="rounded-2xl bg-slate-50 p-4">
@@ -468,9 +510,7 @@ export default async function WorkerProfilePage({
                   workerId={workerProfile.id}
                   workerUserId={workerProfile.user_id}
                   workerName={profile?.full_name || "Worker"}
-                  areaSlug={
-                    workerProfile.area_slug || profile?.area_slug || "belfast"
-                  }
+                  areaSlug={displayAreaSlug || "united-kingdom"}
                   selectedMeetingAt={selectedSlot}
                 />
               </>
@@ -489,12 +529,20 @@ export default async function WorkerProfilePage({
                   {workerProfile.category || "Not specified"}
                 </p>
                 <p>
-                  <span className="font-semibold text-slate-900">City:</span>{" "}
-                  {profile?.city || workerProfile.city || "Not specified"}
+                  <span className="font-semibold text-slate-900">Country:</span>{" "}
+                  {displayCountry || "Not specified"}
                 </p>
                 <p>
-                  <span className="font-semibold text-slate-900">Area:</span>{" "}
-                  {titleCase(profile?.area_slug || workerProfile.area_slug)}
+                  <span className="font-semibold text-slate-900">Region:</span>{" "}
+                  {displayRegion || "Not specified"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">City:</span>{" "}
+                  {displayCity || "Not specified"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Postcode:</span>{" "}
+                  {displayPostcode || "Not specified"}
                 </p>
                 <p>
                   <span className="font-semibold text-slate-900">

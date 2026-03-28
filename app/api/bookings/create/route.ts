@@ -10,6 +10,26 @@ const adminSupabase = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown) {
+  const text = normalizeText(value);
+  return text ? text : null;
+}
+
+function normalizeUpperText(value: unknown) {
+  const text = normalizeText(value);
+  return text ? text.toUpperCase() : "";
+}
+
+function safeIsoDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createServerClient();
@@ -24,20 +44,22 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const workerUserId =
-      typeof body?.workerUserId === "string" ? body.workerUserId.trim() : "";
-    const workerProfileId =
-      typeof body?.workerProfileId === "string" ? body.workerProfileId.trim() : "";
-    const title =
-      typeof body?.title === "string" ? body.title.trim() : "";
-    const message =
-      typeof body?.message === "string" ? body.message.trim() : "";
-    const areaSlug =
-      typeof body?.areaSlug === "string" ? body.areaSlug.trim() : "";
-    const preferredMeetingAt =
-      typeof body?.preferredMeetingAt === "string"
-        ? body.preferredMeetingAt.trim()
-        : "";
+    const workerUserId = normalizeText(body?.workerUserId);
+    const workerProfileId = normalizeText(body?.workerProfileId);
+    const title = normalizeText(body?.title);
+    const message = normalizeText(body?.message);
+    const areaSlug = normalizeText(body?.areaSlug) || "united-kingdom";
+
+    const country = normalizeText(body?.country) || "United Kingdom";
+    const region = normalizeOptionalText(body?.region);
+    const city = normalizeOptionalText(body?.city);
+    const postcode = normalizeUpperText(body?.postcode) || null;
+
+    const preferredMeetingAtRaw = normalizeText(body?.preferredMeetingAt);
+    const preferredMeetingAt = preferredMeetingAtRaw
+      ? safeIsoDate(preferredMeetingAtRaw)
+      : null;
+
     const budgetAmount =
       typeof body?.budgetAmount === "number" && !Number.isNaN(body.budgetAmount)
         ? body.budgetAmount
@@ -116,7 +138,7 @@ export async function POST(req: Request) {
 
     const { data: workerProfile, error: workerProfileError } = await adminSupabase
       .from("worker_profiles")
-      .select("id, user_id, is_open_to_work, city, area_slug")
+      .select("id, user_id, is_open_to_work, country, city, postcode, area_slug")
       .eq("id", workerProfileId)
       .eq("user_id", workerUserId)
       .maybeSingle();
@@ -157,9 +179,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const meetingIso = new Date(preferredMeetingAt).toISOString();
     const meetingText = new Date(preferredMeetingAt).toLocaleString("en-GB");
     const now = new Date().toISOString();
+
+    const bookingCountry = country || workerProfile.country || "United Kingdom";
+    const bookingCity = city || workerProfile.city || null;
+    const bookingPostcode = postcode || workerProfile.postcode || null;
+    const bookingAreaSlug = areaSlug || workerProfile.area_slug || "united-kingdom";
 
     const { data: booking, error: bookingError } = await adminSupabase
       .from("bookings")
@@ -171,12 +197,15 @@ export async function POST(req: Request) {
         message,
         budget_amount: budgetAmount,
         currency_code: "GBP",
-        area_slug: areaSlug || workerProfile.area_slug || "belfast",
-        city: workerProfile.city || null,
+        area_slug: bookingAreaSlug,
+        country: bookingCountry,
+        region,
+        city: bookingCity,
+        postcode: bookingPostcode,
         status: "pending",
         seen_by_hirer: true,
         seen_by_worker: false,
-        preferred_meeting_at: meetingIso,
+        preferred_meeting_at: preferredMeetingAt,
       })
       .select("id, title, status")
       .single();
@@ -213,6 +242,11 @@ export async function POST(req: Request) {
           booking_id: booking.id,
           hirer_user_id: user.id,
           preferred_meeting_at: preferredMeetingAt,
+          country: bookingCountry,
+          region,
+          city: bookingCity,
+          postcode: bookingPostcode,
+          area_slug: bookingAreaSlug,
           created_at: now,
         },
       },
@@ -225,6 +259,11 @@ export async function POST(req: Request) {
           booking_id: booking.id,
           worker_user_id: workerUserId,
           preferred_meeting_at: preferredMeetingAt,
+          country: bookingCountry,
+          region,
+          city: bookingCity,
+          postcode: bookingPostcode,
+          area_slug: bookingAreaSlug,
           created_at: now,
         },
       },

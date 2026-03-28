@@ -26,6 +26,13 @@ type BookingResponse = {
     title?: string | null;
     status?: string | null;
     preferred_meeting_at?: string | null;
+    budget_amount?: number | null;
+    currency_code?: string | null;
+    country?: string | null;
+    region?: string | null;
+    city?: string | null;
+    postcode?: string | null;
+    area_slug?: string | null;
   };
   messages?: Message[];
   error?: string;
@@ -44,6 +51,25 @@ function formatTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatBudget(amount?: number | null, currencyCode?: string | null) {
+  if (amount == null) return "Not specified";
+  return `${currencyCode || "GBP"} ${amount}`;
+}
+
+function formatLocation(input: {
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postcode?: string | null;
+  area_slug?: string | null;
+}) {
+  const parts = [input.city, input.region, input.country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (input.postcode) return input.postcode;
+  if (input.area_slug) return input.area_slug;
+  return "Location not specified";
 }
 
 function MessageStatus({
@@ -71,6 +97,8 @@ function statusBadgeClasses(status?: string | null) {
       return "bg-indigo-50 text-indigo-700";
     case "completed":
       return "bg-slate-100 text-slate-700";
+    case "worker_marked_done":
+      return "bg-violet-50 text-violet-700";
     default:
       return "bg-amber-50 text-amber-700";
   }
@@ -92,6 +120,13 @@ export default function BookingMessagesClient({
   const [preferredMeetingAt, setPreferredMeetingAt] = useState<string | null>(
     null
   );
+  const [budgetAmount, setBudgetAmount] = useState<number | null>(null);
+  const [currencyCode, setCurrencyCode] = useState<string>("GBP");
+  const [bookingCountry, setBookingCountry] = useState<string | null>(null);
+  const [bookingRegion, setBookingRegion] = useState<string | null>(null);
+  const [bookingCity, setBookingCity] = useState<string | null>(null);
+  const [bookingPostcode, setBookingPostcode] = useState<string | null>(null);
+  const [bookingAreaSlug, setBookingAreaSlug] = useState<string | null>(null);
   const [otherTyping, setOtherTyping] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -107,6 +142,16 @@ export default function BookingMessagesClient({
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
   }, [messages]);
+
+  const bookingLocation = useMemo(() => {
+    return formatLocation({
+      city: bookingCity,
+      region: bookingRegion,
+      country: bookingCountry,
+      postcode: bookingPostcode,
+      area_slug: bookingAreaSlug,
+    });
+  }, [bookingCity, bookingRegion, bookingCountry, bookingPostcode, bookingAreaSlug]);
 
   async function loadChat() {
     try {
@@ -129,6 +174,7 @@ export default function BookingMessagesClient({
       const chatRes = await fetch(`/api/messages/get?bookingId=${bookingId}`, {
         cache: "no-store",
       });
+
       const chatRaw = await chatRes.text();
       const chatData: BookingResponse = chatRaw ? JSON.parse(chatRaw) : {};
 
@@ -144,6 +190,13 @@ export default function BookingMessagesClient({
         setBookingTitle(chatData.booking.title || "Conversation");
         setBookingStatus(chatData.booking.status || "pending");
         setPreferredMeetingAt(chatData.booking.preferred_meeting_at || null);
+        setBudgetAmount(chatData.booking.budget_amount ?? null);
+        setCurrencyCode(chatData.booking.currency_code || "GBP");
+        setBookingCountry(chatData.booking.country || null);
+        setBookingRegion(chatData.booking.region || null);
+        setBookingCity(chatData.booking.city || null);
+        setBookingPostcode(chatData.booking.postcode || null);
+        setBookingAreaSlug(chatData.booking.area_slug || null);
       }
 
       await fetch("/api/messages/delivered", {
@@ -369,7 +422,7 @@ export default function BookingMessagesClient({
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8">
       <section className="mx-auto max-w-4xl">
-        <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-sm font-medium text-slate-500">{bookingTitle}</p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900">
@@ -403,16 +456,37 @@ export default function BookingMessagesClient({
             </span>
           </div>
 
-          {preferredMeetingAt ? (
-            <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-indigo-600">
-                Meeting time
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Location
               </p>
-              <p className="mt-1 text-sm font-semibold text-indigo-900">
-                {formatDateTime(preferredMeetingAt)}
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {bookingLocation}
+              </p>
+              {bookingPostcode ? (
+                <p className="mt-1 text-xs text-slate-500">{bookingPostcode}</p>
+              ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Budget
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {formatBudget(budgetAmount, currencyCode)}
               </p>
             </div>
-          ) : null}
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Meeting time
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {preferredMeetingAt ? formatDateTime(preferredMeetingAt) : "Not set"}
+              </p>
+            </div>
+          </div>
         </div>
 
         <section className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4 shadow-sm sm:p-6">
@@ -504,4 +578,4 @@ export default function BookingMessagesClient({
       </section>
     </main>
   );
-}
+} 

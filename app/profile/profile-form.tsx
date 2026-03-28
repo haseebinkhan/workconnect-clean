@@ -30,71 +30,22 @@ const emptyAvailability: AvailabilityState = {
   sunday: [],
 };
 
-const niLocations = [
-  { value: "antrim", label: "Antrim" },
-  { value: "armagh", label: "Armagh" },
-  { value: "ballycastle", label: "Ballycastle" },
-  { value: "ballyclare", label: "Ballyclare" },
-  { value: "ballygowan", label: "Ballygowan" },
-  { value: "ballyhalbert", label: "Ballyhalbert" },
-  { value: "ballyhornan", label: "Ballyhornan" },
-  { value: "ballymena", label: "Ballymena" },
-  { value: "ballymoney", label: "Ballymoney" },
-  { value: "ballynahinch", label: "Ballynahinch" },
-  { value: "banbridge", label: "Banbridge" },
-  { value: "bangor", label: "Bangor" },
-  { value: "belfast", label: "Belfast" },
-  { value: "carryduff", label: "Carryduff" },
-  { value: "carrickfergus", label: "Carrickfergus" },
-  { value: "castlederg", label: "Castlederg" },
-  { value: "castlewellan", label: "Castlewellan" },
-  { value: "coleraine", label: "Coleraine" },
-  { value: "comber", label: "Comber" },
-  { value: "coalisland", label: "Coalisland" },
-  { value: "cookstown", label: "Cookstown" },
-  { value: "craigavon", label: "Craigavon" },
-  { value: "crossgar", label: "Crossgar" },
-  { value: "derry", label: "Derry / Londonderry" },
-  { value: "donaghadee", label: "Donaghadee" },
-  { value: "downpatrick", label: "Downpatrick" },
-  { value: "dundonald", label: "Dundonald" },
-  { value: "dungannon", label: "Dungannon" },
-  { value: "enniskillen", label: "Enniskillen" },
-  { value: "finaghy", label: "Finaghy" },
-  { value: "glengormley", label: "Glengormley" },
-  { value: "greenisland", label: "Greenisland" },
-  { value: "hillsborough", label: "Hillsborough" },
-  { value: "holywood", label: "Holywood" },
-  { value: "jordanstown", label: "Jordanstown" },
-  { value: "killyleagh", label: "Killyleagh" },
-  { value: "larne", label: "Larne" },
-  { value: "limavady", label: "Limavady" },
-  { value: "lisburn", label: "Lisburn" },
-  { value: "lurgan", label: "Lurgan" },
-  { value: "magherafelt", label: "Magherafelt" },
-  { value: "moira", label: "Moira" },
-  { value: "newcastle", label: "Newcastle" },
-  { value: "newry", label: "Newry" },
-  { value: "newtownabbey", label: "Newtownabbey" },
-  { value: "newtownards", label: "Newtownards" },
-  { value: "omagh", label: "Omagh" },
-  { value: "portadown", label: "Portadown" },
-  { value: "portrush", label: "Portrush" },
-  { value: "portstewart", label: "Portstewart" },
-  { value: "randalstown", label: "Randalstown" },
-  { value: "saintfield", label: "Saintfield" },
-  { value: "strabane", label: "Strabane" },
-  { value: "toome", label: "Toome" },
-  { value: "warrenpoint", label: "Warrenpoint" },
-  { value: "whiteabbey", label: "Whiteabbey" },
-  { value: "whitehead", label: "Whitehead" },
+const UK_COUNTRIES = [
+  { value: "United Kingdom", label: "United Kingdom" },
+];
+
+const UK_REGIONS = [
+  { value: "England", label: "England" },
+  { value: "Northern Ireland", label: "Northern Ireland" },
+  { value: "Scotland", label: "Scotland" },
+  { value: "Wales", label: "Wales" },
 ];
 
 function labelize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function normalizeAvailability(input: any): AvailabilityState {
+function normalizeAvailability(input: unknown): AvailabilityState {
   const result: AvailabilityState = {
     monday: [],
     tuesday: [],
@@ -105,8 +56,10 @@ function normalizeAvailability(input: any): AvailabilityState {
     sunday: [],
   };
 
+  if (!input || typeof input !== "object") return result;
+
   for (const day of days) {
-    const value = input?.[day];
+    const value = (input as Record<string, unknown>)[day];
     if (Array.isArray(value)) {
       result[day] = value.filter((item) =>
         shifts.includes(item as ShiftName)
@@ -115,6 +68,10 @@ function normalizeAvailability(input: any): AvailabilityState {
   }
 
   return result;
+}
+
+function slugifyArea(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
 export default function ProfileForm({
@@ -131,6 +88,8 @@ export default function ProfileForm({
   initialShowPhoneAfterAccept,
   initialShowWhatsappAfterAccept,
   initialBio,
+  initialCountry,
+  initialRegion,
 }: {
   initialFullName: string;
   initialEmail: string;
@@ -139,18 +98,22 @@ export default function ProfileForm({
   initialAreaSlug: string;
   initialWorkerEnabled: boolean;
   initialHirerEnabled: boolean;
-  initialAvailability: any;
+  initialAvailability: unknown;
   initialPhoneNumber: string;
   initialWhatsappNumber: string;
   initialShowPhoneAfterAccept: boolean;
   initialShowWhatsappAfterAccept: boolean;
   initialBio: string;
+  initialCountry: string;
+  initialRegion: string;
 }) {
   const supabase = createClient();
   const router = useRouter();
 
   const [fullName, setFullName] = useState(initialFullName);
   const [email] = useState(initialEmail);
+  const [country, setCountry] = useState(initialCountry || "United Kingdom");
+  const [region, setRegion] = useState(initialRegion || "Northern Ireland");
   const [city, setCity] = useState(initialCity);
   const [postcode, setPostcode] = useState(initialPostcode);
   const [areaSlug, setAreaSlug] = useState(initialAreaSlug || "belfast");
@@ -204,6 +167,21 @@ export default function ProfileForm({
       return;
     }
 
+    if (!country.trim()) {
+      setLoading(false);
+      setErrorMessage("Country is required.");
+      return;
+    }
+
+    if (!region.trim()) {
+      setLoading(false);
+      setErrorMessage("Region is required.");
+      return;
+    }
+
+    const computedAreaSlug =
+      areaSlug?.trim() || slugifyArea(city || region || "uk");
+
     const {
       data: { user },
       error: userError,
@@ -220,9 +198,11 @@ export default function ProfileForm({
       .from("profiles")
       .update({
         full_name: fullName.trim() || null,
+        country: country.trim() || null,
+        region: region.trim() || null,
         city: city.trim() || null,
         postcode: postcode.trim() || null,
-        area_slug: areaSlug,
+        area_slug: computedAreaSlug,
         phone_number: phoneNumber.trim() || null,
         whatsapp_number: whatsappNumber.trim() || null,
         show_phone_after_accept: showPhoneAfterAccept,
@@ -247,7 +227,8 @@ export default function ProfileForm({
       const { error: workerUpdateError } = await supabase
         .from("worker_profiles")
         .update({
-          area_slug: areaSlug,
+          country: country.trim() || null,
+          area_slug: computedAreaSlug,
           city: city.trim() || null,
           postcode: postcode.trim() || null,
           is_open_to_work: workerEnabled ? true : false,
@@ -262,6 +243,7 @@ export default function ProfileForm({
       }
     }
 
+    setAreaSlug(computedAreaSlug);
     setLoading(false);
     setSuccessMessage("Profile updated successfully.");
     router.refresh();
@@ -335,7 +317,7 @@ export default function ProfileForm({
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Enter your full name"
@@ -359,11 +341,45 @@ export default function ProfileForm({
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Country
+                </label>
+                <select
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                >
+                  {UK_COUNTRIES.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Nation / Region
+                </label>
+                <select
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                >
+                  {UK_REGIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
                   City
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                   placeholder="Enter your city"
@@ -376,7 +392,7 @@ export default function ProfileForm({
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 uppercase outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 uppercase outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   value={postcode}
                   onChange={(e) => setPostcode(e.target.value)}
                   placeholder="Enter postcode"
@@ -391,27 +407,26 @@ export default function ProfileForm({
               Your service area
             </h2>
 
-            <div className="mt-6">
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Area
-              </label>
-              <select
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
-                value={areaSlug}
-                onChange={(e) => setAreaSlug(e.target.value)}
-              >
-                {niLocations.map((location) => (
-                  <option key={location.value} value={location.value}>
-                    {location.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Internal area slug
+                </label>
+                <input
+                  type="text"
+                  className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-600 outline-none"
+                  value={areaSlug}
+                  onChange={(e) => setAreaSlug(e.target.value)}
+                  placeholder="Auto-generated from city/region if left blank"
+                />
+              </div>
 
-            <p className="mt-4 text-sm text-slate-500">
-              Your selected area helps WorkConnect personalise search results and
-              local worker discovery.
-            </p>
+              <p className="text-sm text-slate-500">
+                This field is kept for compatibility with the current project.
+                Country, region, city, and postcode are now the main location
+                fields.
+              </p>
+            </div>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
@@ -426,7 +441,7 @@ export default function ProfileForm({
                 rows={5}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500"
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                 placeholder="Write a short summary about yourself"
               />
             </div>
@@ -490,7 +505,7 @@ export default function ProfileForm({
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   placeholder="e.g. +447123456789"
@@ -503,7 +518,7 @@ export default function ProfileForm({
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   value={whatsappNumber}
                   onChange={(e) => setWhatsappNumber(e.target.value)}
                   placeholder="e.g. +447123456789"
@@ -579,8 +594,8 @@ export default function ProfileForm({
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Save your information to keep your local results, profile details,
-              availability, and contact settings up to date.
+              Save your information to keep your UK location details, profile
+              details, availability, and contact settings up to date.
             </p>
 
             <button
@@ -619,7 +634,7 @@ export default function ProfileForm({
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   placeholder="Enter new password"
                 />
               </div>
@@ -632,7 +647,7 @@ export default function ProfileForm({
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                   placeholder="Confirm new password"
                 />
               </div>

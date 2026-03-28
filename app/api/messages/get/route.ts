@@ -32,13 +32,25 @@ export async function GET(req: NextRequest) {
         title,
         hirer_user_id,
         worker_user_id,
+        status,
+        budget_amount,
+        currency_code,
+        preferred_meeting_at,
+        country,
+        region,
+        city,
+        postcode,
+        area_slug,
         deleted_at
       `)
       .eq("id", bookingId)
       .maybeSingle();
 
     if (bookingError || !booking || booking.deleted_at) {
-      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Conversation not found" },
+        { status: 404 }
+      );
     }
 
     const isParticipant =
@@ -49,7 +61,9 @@ export async function GET(req: NextRequest) {
     }
 
     const otherUserId =
-      booking.hirer_user_id === user.id ? booking.worker_user_id : booking.hirer_user_id;
+      booking.hirer_user_id === user.id
+        ? booking.worker_user_id
+        : booking.hirer_user_id;
 
     const { data: otherProfile } = await adminSupabase
       .from("profiles")
@@ -83,6 +97,15 @@ export async function GET(req: NextRequest) {
         hirer_user_id: booking.hirer_user_id,
         worker_user_id: booking.worker_user_id,
         other_user_name: otherProfile?.full_name || "Recipient",
+        status: booking.status || "pending",
+        budget_amount: booking.budget_amount ?? null,
+        currency_code: booking.currency_code || "GBP",
+        preferred_meeting_at: booking.preferred_meeting_at || null,
+        country: booking.country || null,
+        region: booking.region || null,
+        city: booking.city || null,
+        postcode: booking.postcode || null,
+        area_slug: booking.area_slug || null,
       },
       messages: messages || [],
     });
