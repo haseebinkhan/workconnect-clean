@@ -48,6 +48,7 @@ export default function WorkerProfileEditPage() {
   const [availabilityNotes, setAvailabilityNotes] = useState("");
   const [certifications, setCertifications] = useState<string[]>([]);
   const [availability, setAvailability] = useState<Record<string, string[]>>({});
+  const [isPublic, setIsPublic] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -74,7 +75,8 @@ export default function WorkerProfileEditPage() {
             hourly_rate_max,
             certifications,
             availability_notes,
-            availability
+            availability,
+            is_public
           `)
           .eq("user_id", user.id)
           .maybeSingle();
@@ -103,6 +105,7 @@ export default function WorkerProfileEditPage() {
               ? (data.availability as Record<string, string[]>)
               : {}
           );
+          setIsPublic(data.is_public ?? true);
         }
       } catch (error) {
         console.error("worker profile load error:", error);
@@ -195,6 +198,7 @@ export default function WorkerProfileEditPage() {
         availability_notes: availabilityNotes.trim() || null,
         availability,
         is_open_to_work: true,
+        is_public: isPublic,
         currency_code: "GBP",
         updated_at: new Date().toISOString(),
       };
@@ -239,6 +243,45 @@ export default function WorkerProfileEditPage() {
         </h1>
 
         <form onSubmit={handleSave} className="mt-8 space-y-8">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <p className="text-sm font-semibold text-slate-900">Public visibility</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Choose whether your worker profile is visible publicly.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPublic(true)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  isPublic
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Public
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPublic(false)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                  !isPublic
+                    ? "bg-slate-900 text-white"
+                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Hidden
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              {isPublic
+                ? "Your worker profile will appear in public search and profile pages."
+                : "Your worker profile will be hidden from public search and public profile pages."}
+            </p>
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
