@@ -409,7 +409,8 @@ export default function ProfileForm({
             </div>
 
             <p className="mt-4 text-sm text-slate-500">
-              Your selected area helps WorkConnect personalise search results and local worker discovery.
+              Your selected area helps WorkConnect personalise search results and
+              local worker discovery.
             </p>
           </div>
 
@@ -565,9 +566,30 @@ export default function ProfileForm({
                   : "No marketplace mode is enabled right now."}
               </p>
               <p className="mt-3 text-sm text-slate-600">
-                Use the Account Modes section above to enable or disable Worker and Hirer modes.
+                Use the Account Modes section above to enable or disable Worker
+                and Hirer modes.
               </p>
             </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">Save changes</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">
+              Update your profile
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Save your information to keep your local results, profile details,
+              availability, and contact settings up to date.
+            </p>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-6 w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "Saving..." : "Save profile"}
+            </button>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
@@ -624,26 +646,6 @@ export default function ProfileForm({
                 {passwordLoading ? "Updating..." : "Update password"}
               </button>
             </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Save changes</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-900">
-              Update your profile
-            </h2>
-
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Save your information to keep your local results, profile details,
-              availability, and contact settings up to date.
-            </p>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-6 w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Saving..." : "Save profile"}
-            </button>
           </div>
         </div>
       </form>
