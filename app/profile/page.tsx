@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ModeSwitcher from "@/components/ModeSwitcher";
 import ProfileModesForm from "./ProfileModesForm";
+import ProfileForm from "./profile-form";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -26,11 +27,12 @@ export default async function ProfilePage() {
         id,
         full_name,
         email,
-        phone_number,
-        whatsapp_number,
         city,
+        postcode,
         area_slug,
         bio,
+        phone_number,
+        whatsapp_number,
         worker_enabled,
         hirer_enabled,
         is_active,
@@ -50,13 +52,15 @@ export default async function ProfilePage() {
         id,
         headline,
         category,
+        description,
         is_open_to_work,
         hourly_rate,
         hourly_rate_min,
         hourly_rate_max,
         rating_avg,
         rating_count,
-        jobs_completed
+        jobs_completed,
+        availability
       `)
       .eq("user_id", user.id)
       .maybeSingle(),
@@ -100,7 +104,8 @@ export default async function ProfilePage() {
             My profile
           </h1>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            One account can work as a worker, a hirer, or both. Your available features depend on the modes enabled below.
+            Manage your personal details, contact information, account modes,
+            and profile settings from one place.
           </p>
         </div>
 
@@ -119,6 +124,24 @@ export default async function ProfilePage() {
             <ProfileModesForm
               workerEnabled={profile.worker_enabled === true}
               hirerEnabled={profile.hirer_enabled === true}
+            />
+
+            <ProfileForm
+              initialFullName={profile.full_name || ""}
+              initialEmail={profile.email || ""}
+              initialCity={profile.city || ""}
+              initialPostcode={profile.postcode || ""}
+              initialAreaSlug={profile.area_slug || "belfast"}
+              initialWorkerEnabled={profile.worker_enabled === true}
+              initialHirerEnabled={profile.hirer_enabled === true}
+              initialAvailability={workerProfile?.availability || null}
+              initialPhoneNumber={profile.phone_number || ""}
+              initialWhatsappNumber={profile.whatsapp_number || ""}
+              initialShowPhoneAfterAccept={profile.show_phone_after_accept === true}
+              initialShowWhatsappAfterAccept={
+                profile.show_whatsapp_after_accept === true
+              }
+              initialBio={profile.bio || ""}
             />
 
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -164,7 +187,7 @@ export default async function ProfilePage() {
 
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Phone
+                    Mobile
                   </p>
                   <p className="mt-1 text-sm font-semibold text-slate-900">
                     {profile.phone_number || "Not set"}
@@ -199,13 +222,6 @@ export default async function ProfilePage() {
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
-                  href="/auth/reset-password"
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-                >
-                  Reset password
-                </Link>
-
-                <Link
                   href="/dashboard"
                   className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
                 >
@@ -215,7 +231,9 @@ export default async function ProfilePage() {
             </div>
 
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-              <h2 className="text-2xl font-bold text-slate-900">Contact visibility</h2>
+              <h2 className="text-2xl font-bold text-slate-900">
+                Contact visibility
+              </h2>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl bg-slate-50 p-4">
@@ -246,27 +264,40 @@ export default async function ProfilePage() {
               {workerProfile ? (
                 <div className="mt-4 space-y-3 text-sm text-slate-700">
                   <p>
-                    <span className="font-semibold text-slate-900">Headline:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Headline:
+                    </span>{" "}
                     {workerProfile.headline || "Not set"}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-900">Category:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Category:
+                    </span>{" "}
                     {workerProfile.category || "Not set"}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-900">Open to work:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Open to work:
+                    </span>{" "}
                     {workerProfile.is_open_to_work ? "Yes" : "No"}
                   </p>
                   <p>
                     <span className="font-semibold text-slate-900">Rate:</span>{" "}
                     {workerProfile.hourly_rate
                       ? `GBP ${workerProfile.hourly_rate}`
-                      : workerProfile.hourly_rate_min || workerProfile.hourly_rate_max
-                      ? `GBP ${workerProfile.hourly_rate_min ?? 0}${workerProfile.hourly_rate_max ? ` - ${workerProfile.hourly_rate_max}` : ""}`
+                      : workerProfile.hourly_rate_min ||
+                        workerProfile.hourly_rate_max
+                      ? `GBP ${workerProfile.hourly_rate_min ?? 0}${
+                          workerProfile.hourly_rate_max
+                            ? ` - ${workerProfile.hourly_rate_max}`
+                            : ""
+                        }`
                       : "Not set"}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-900">Completed jobs:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Completed jobs:
+                    </span>{" "}
                     {workerProfile.jobs_completed ?? 0}
                   </p>
                 </div>
@@ -304,11 +335,15 @@ export default async function ProfilePage() {
               {hirerProfile ? (
                 <div className="mt-4 space-y-3 text-sm text-slate-700">
                   <p>
-                    <span className="font-semibold text-slate-900">Company:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Company:
+                    </span>{" "}
                     {hirerProfile.company_name || "Not set"}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-900">Contact name:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Contact name:
+                    </span>{" "}
                     {hirerProfile.contact_name || "Not set"}
                   </p>
                   <p>
@@ -316,7 +351,9 @@ export default async function ProfilePage() {
                     {hirerProfile.hirer_type || "Not set"}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-900">Industry:</span>{" "}
+                    <span className="font-semibold text-slate-900">
+                      Industry:
+                    </span>{" "}
                     {hirerProfile.industry || "Not set"}
                   </p>
                 </div>
