@@ -1,4 +1,4 @@
-﻿import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import BecomeWorkerForm from "./BecomeWorkerForm";
 
 export default async function BecomeWorkerPage() {

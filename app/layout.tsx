@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
 import PresenceTracker from "@/components/PresenceTracker";
 import NavbarServer from "@/components/layout/NavbarServer";

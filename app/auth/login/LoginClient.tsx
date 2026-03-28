@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginClient() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
 
@@ -31,7 +32,8 @@ export default function LoginClient() {
         if (!mounted) return;
 
         if (session?.user) {
-          window.location.href = redirectTarget;
+          router.replace(redirectTarget);
+          router.refresh();
           return;
         }
 
@@ -48,11 +50,15 @@ export default function LoginClient() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
 
-      if (session?.user) {
-        window.location.href = redirectTarget;
+      if (
+        (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
+        session?.user
+      ) {
+        router.replace(redirectTarget);
+        router.refresh();
       }
     });
 
@@ -60,7 +66,7 @@ export default function LoginClient() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [redirectTarget, supabase]);
+  }, [router, redirectTarget, supabase]);
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -82,7 +88,7 @@ export default function LoginClient() {
       setLoading(true);
       setErrorMessage("");
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
       });
@@ -92,7 +98,13 @@ export default function LoginClient() {
         return;
       }
 
-      window.location.href = redirectTarget;
+      if (!data.session?.user) {
+        setErrorMessage("Could not start your session. Please try again.");
+        return;
+      }
+
+      router.replace(redirectTarget);
+      router.refresh();
     } catch (error) {
       console.error("login error:", error);
       setErrorMessage("Could not sign in. Please try again.");
@@ -143,43 +155,14 @@ export default function LoginClient() {
                 WorkConnect
               </p>
 
-              <h2 className="mt-4 text-4xl font-bold tracking-tight leading-tight">
+              <h2 className="mt-4 text-4xl font-bold leading-tight tracking-tight">
                 Sign in to manage local workers, jobs, and requests.
               </h2>
 
               <p className="mt-5 max-w-md text-sm leading-7 text-slate-200">
                 Access your dashboard, saved workers, messages, bookings, and
-                hiring activity in one place across Northern Ireland.
+                hiring activity in one place.
               </p>
-
-              <div className="mt-8 grid gap-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Find trusted local workers
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-slate-300">
-                    Search by area, BT postcode, category, and availability.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Manage requests with confidence
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-slate-300">
-                    Chat, schedule meetings, and track work progress clearly.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Build trust through reviews
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-slate-300">
-                    Verified activity, ratings, and structured workflows.
-                  </p>
-                </div>
-              </div>
             </div>
 
             <div className="relative grid gap-4 sm:grid-cols-3">

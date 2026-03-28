@@ -1,4 +1,4 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 
 export default function Footer() {
@@ -8,7 +8,7 @@ export default function Footer() {
 
         <div className="grid grid-cols-1 gap-10 md:grid-cols-4">
 
-          {/* 🔥 BIG LOGO */}
+          {/* ?? BIG LOGO */}
           <div>
             <Link href="/" className="mb-6 block">
               <Image
@@ -88,7 +88,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 border-t border-slate-200 pt-6 text-center text-sm text-slate-500">
-          © {new Date().getFullYear()} WorkConnect. All rights reserved.
+            {new Date().getFullYear()} WorkConnect. All rights reserved.
         </div>
 
       </div>
