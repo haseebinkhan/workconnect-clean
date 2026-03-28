@@ -10,6 +10,7 @@ import {
   FileText,
   MessageSquare,
   ShieldAlert,
+  Trash2,
   User,
   XCircle,
 } from "lucide-react";
@@ -47,14 +48,19 @@ function getNotificationHref(item: NotificationRow) {
   }
 
   if (meta.job_id && item.type === "job_application") {
-    return `/my-job-posts?job=${meta.job_id}${meta.application_id ? `&application=${meta.application_id}` : ""}`;
+    return `/my-job-posts?job=${meta.job_id}${
+      meta.application_id ? `&application=${meta.application_id}` : ""
+    }`;
   }
 
   if (meta.job_id && item.type === "job_status_updated") {
     return "/my-job-posts";
   }
 
-  if (item.type === "application_accepted" || item.type === "application_rejected") {
+  if (
+    item.type === "application_accepted" ||
+    item.type === "application_rejected"
+  ) {
     return "/my-applications";
   }
 
@@ -94,6 +100,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
 
   const unreadCount = useMemo(
@@ -173,6 +180,38 @@ export default function NotificationBell({ userId }: { userId: string }) {
     }
   }
 
+  async function clearAllNotifications() {
+    const ok = window.confirm(
+      "Clear all notifications? This will permanently remove them."
+    );
+    if (!ok) return;
+
+    try {
+      setClearing(true);
+
+      const res = await fetch("/api/notifications/clear", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("clear notifications error:", data?.message);
+        return;
+      }
+
+      setNotifications([]);
+    } catch (error) {
+      console.error("clear notifications crash:", error);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   useEffect(() => {
     if (!userId) return;
     void loadNotifications();
@@ -213,6 +252,19 @@ export default function NotificationBell({ userId }: { userId: string }) {
           setNotifications((prev) =>
             prev.map((item) => (item.id === updated.id ? updated : item))
           );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const deletedId = payload.old.id as string;
+          setNotifications((prev) => prev.filter((item) => item.id !== deletedId));
         }
       )
       .subscribe();
@@ -268,21 +320,37 @@ export default function NotificationBell({ userId }: { userId: string }) {
             <div>
               <h3 className="text-base font-bold text-slate-900">Notifications</h3>
               <p className="mt-1 text-xs text-slate-500">
-                {unreadCount > 0
-                  ? `${unreadCount} unread update${unreadCount > 1 ? "s" : ""}`
+                {notifications.length > 0
+                  ? `${notifications.length} total notification${
+                      notifications.length > 1 ? "s" : ""
+                    }`
                   : "You are all caught up"}
               </p>
             </div>
 
-            {unreadCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => void markAllAsRead()}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Mark all read
-              </button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => void markAllAsRead()}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Mark all read
+                </button>
+              ) : null}
+
+              {notifications.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => void clearAllNotifications()}
+                  disabled={clearing}
+                  className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {clearing ? "Clearing..." : "Clear all"}
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="max-h-[420px] overflow-y-auto">
