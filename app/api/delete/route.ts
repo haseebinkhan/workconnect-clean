@@ -12,24 +12,24 @@ function json(message: string, status = 200) {
 
 export async function POST(request: Request) {
   try {
-    const serverSupabase = createServerClient();
+    const supabase = createServerClient();
 
     const {
       data: { user },
       error: userError,
-    } = await serverSupabase.auth.getUser();
+    } = await supabase.auth.getUser();
 
     if (userError || !user) {
       return json("Unauthorized.", 401);
     }
 
-    const { data: me, error: meError } = await serverSupabase
+    const { data: me } = await supabase
       .from("profiles")
       .select("id, is_admin")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (meError || !me?.is_admin) {
+    if (!me?.is_admin) {
       return json("Forbidden.", 403);
     }
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
 
     return json("User deleted successfully.");
   } catch (error) {
-    console.error("admin delete user error:", error);
+    console.error("admin delete error:", error);
     return json("Could not delete user.", 500);
   }
 }
