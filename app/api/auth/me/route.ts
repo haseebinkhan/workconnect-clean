@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
@@ -7,13 +7,16 @@ export async function GET() {
 
     const {
       data: { user },
+      error,
     } = await supabase.auth.getUser();
 
-    return NextResponse.json({
-      userId: user?.id || null,
-    });
+    if (error || !user) {
+      return NextResponse.json({ user: null }, { status: 200 });
+    }
+
+    return NextResponse.json({ user });
   } catch (error) {
-    console.error("auth me error:", error);
-    return NextResponse.json({ userId: null }, { status: 200 });
+    console.error("auth/me error:", error);
+    return NextResponse.json({ user: null }, { status: 500 });
   }
 }
