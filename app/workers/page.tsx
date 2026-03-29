@@ -145,9 +145,6 @@ export default async function WorkersPage() {
   });
 
   return (
-    <WorkersSearchClient
-      workers={workers}
-      defaultRegion={profile.region || ""}
-    />
+    <WorkersSearchClient initialWorkers={workers} />
   );
 }
