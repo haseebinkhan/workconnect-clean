@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 const adminSupabase = createAdminClient(
@@ -18,13 +18,14 @@ function normalizeAction(value: unknown): ActionType | null {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createServerClient();
+    const supabase = createServerClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -106,10 +107,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (jobError || !job || job.deleted_at) {
-      return NextResponse.json(
-        { error: "Job not found." },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Job not found." }, { status: 404 });
     }
 
     if (job.hirer_id !== hirerProfile.id) {
@@ -271,12 +269,16 @@ export async function POST(req: Request) {
 
     const bookingMessageParts = [
       `Your application for "${job.title}" has been accepted.`,
-      application.start_date ? `Preferred start date: ${application.start_date}.` : "",
+      application.start_date
+        ? `Preferred start date: ${application.start_date}.`
+        : "",
       application.availability_type
         ? `Availability: ${application.availability_type}.`
         : "",
       application.proposed_rate != null
-        ? `Agreed proposed rate: ${application.currency_code || job.currency_code || "GBP"} ${application.proposed_rate}.`
+        ? `Agreed proposed rate: ${
+            application.currency_code || job.currency_code || "GBP"
+          } ${application.proposed_rate}.`
         : "",
       application.phone ? `Worker phone: ${application.phone}.` : "",
     ].filter(Boolean);
@@ -292,12 +294,8 @@ export async function POST(req: Request) {
       message: bookingMessageParts.join(" "),
       status: "pending",
       budget_amount:
-        application.proposed_rate ??
-        job.budget_max ??
-        job.budget_min ??
-        null,
-      currency_code:
-        application.currency_code || job.currency_code || "GBP",
+        application.proposed_rate ?? job.budget_max ?? job.budget_min ?? null,
+      currency_code: application.currency_code || job.currency_code || "GBP",
       city: job.city || workerProfile.city || null,
       area_slug: job.area_slug || workerProfile.area_slug || null,
       seen_by_hirer: true,
@@ -329,9 +327,13 @@ export async function POST(req: Request) {
 
     const messageTextParts = [
       `Hi, your application for "${job.title}" has been accepted.`,
-      application.cover_message ? `Your application message: ${application.cover_message}` : "",
+      application.cover_message
+        ? `Your application message: ${application.cover_message}`
+        : "",
       application.proposed_rate != null
-        ? `Proposed rate: ${application.currency_code || job.currency_code || "GBP"} ${application.proposed_rate}.`
+        ? `Proposed rate: ${
+            application.currency_code || job.currency_code || "GBP"
+          } ${application.proposed_rate}.`
         : "",
       application.start_date ? `Start date: ${application.start_date}.` : "",
       application.availability_type
@@ -341,15 +343,11 @@ export async function POST(req: Request) {
 
     const { error: messageError } = await adminSupabase.from("messages").insert({
       booking_id: booking.id,
-      sender_user_id: user.id,
-      receiver_user_id: workerProfile.user_id,
+      sender_id: user.id,
+      receiver_id: workerProfile.user_id,
       content: messageTextParts.join(" "),
-      message_type: "text",
       is_read: false,
-      delivered_at: null,
-      read_at: null,
-      deleted_by_sender: false,
-      deleted_by_receiver: false,
+      delivered: false,
     });
 
     if (messageError) {
@@ -389,7 +387,10 @@ export async function POST(req: Request) {
         .in("id", otherIds);
 
       if (rejectOthersError) {
-        console.error("reject other pending applications error:", rejectOthersError);
+        console.error(
+          "reject other pending applications error:",
+          rejectOthersError
+        );
       }
 
       const otherWorkerIds = otherPendingApplications.map((item) => item.worker_id);
@@ -459,8 +460,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Server error",
+        error: error instanceof Error ? error.message : "Server error",
       },
       { status: 500 }
     );
