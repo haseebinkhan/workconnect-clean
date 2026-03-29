@@ -1,18 +1,23 @@
 import { NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 type DeleteBody = {
-  userIds: string[];
+  userIds?: string[];
 };
 
 function json(message: string, status = 200) {
   return NextResponse.json({ message }, { status });
 }
 
+const adminSupabase = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
 export async function POST(request: Request) {
   try {
-    const serverSupabase = createClient();
+    const serverSupabase = await createClient();
 
     const {
       data: { user },
@@ -23,11 +28,15 @@ export async function POST(request: Request) {
       return json("Unauthorized.", 401);
     }
 
-    const { data: me } = await serverSupabase
+    const { data: me, error: meError } = await serverSupabase
       .from("profiles")
       .select("id, is_admin")
       .eq("id", user.id)
       .maybeSingle();
+
+    if (meError) {
+      return json(meError.message, 500);
+    }
 
     if (!me?.is_admin) {
       return json("Forbidden.", 403);
@@ -42,11 +51,6 @@ export async function POST(request: Request) {
     if (!userIds.length) {
       return json("No users selected.", 400);
     }
-
-    const adminSupabase = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
 
     for (const userId of userIds) {
       await adminSupabase.from("worker_profiles").delete().eq("user_id", userId);
@@ -66,4 +70,3 @@ export async function POST(request: Request) {
     return json("Could not delete user.", 500);
   }
 }
-
