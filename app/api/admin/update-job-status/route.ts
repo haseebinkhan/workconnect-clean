@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 const adminSupabase = createAdminClient(
@@ -11,13 +11,14 @@ const ALLOWED_STATUSES = ["open", "paused", "rejected"] as const;
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createServerClient();
+    const supabase = createServerClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -28,7 +29,10 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (adminError || !adminProfile) {
-      return NextResponse.json({ error: "Admin profile not found" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Admin profile not found" },
+        { status: 403 }
+      );
     }
 
     const isAdmin =
@@ -77,7 +81,10 @@ export async function POST(req: Request) {
     }
 
     if (job.status === status) {
-      return NextResponse.json({ success: true, message: "No change needed" });
+      return NextResponse.json({
+        success: true,
+        message: "No change needed",
+      });
     }
 
     const now = new Date().toISOString();
@@ -104,7 +111,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (hirerProfile?.user_id) {
-      const title =
+      const notificationTitle =
         status === "open"
           ? "Job approved"
           : status === "paused"
@@ -121,7 +128,7 @@ export async function POST(req: Request) {
       await adminSupabase.from("notifications").insert({
         user_id: hirerProfile.user_id,
         type: "job_status_updated",
-        title,
+        title: notificationTitle,
         body: bodyText,
         meta: {
           job_id: job.id,
