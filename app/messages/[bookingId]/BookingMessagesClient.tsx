@@ -171,11 +171,11 @@ export default function BookingMessagesClient({
   }, [messages]);
 
   useEffect(() => {
-    markDelivered();
-    markRead();
+    void markDelivered();
+    void markRead();
 
     const interval = setInterval(() => {
-      refreshThread();
+      void refreshThread();
     }, 7000);
 
     return () => clearInterval(interval);
