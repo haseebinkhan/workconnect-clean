@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
 type DeleteBody = {
   userIds: string[];
@@ -12,13 +12,14 @@ function json(message: string, status = 200) {
 
 export async function POST(request: Request) {
   try {
-    const serverSupabase = await createServerClient();
+    const serverSupabase = createServerClient();
 
     const {
       data: { user },
+      error: userError,
     } = await serverSupabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return json("Unauthorized.", 401);
     }
 
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as DeleteBody;
+
     const userIds = Array.isArray(body?.userIds)
       ? body.userIds.filter((id) => typeof id === "string" && id.trim())
       : [];
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
       return json("No users selected.", 400);
     }
 
-    const adminSupabase = createClient(
+    const adminSupabase = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
