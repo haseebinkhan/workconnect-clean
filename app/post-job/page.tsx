@@ -76,13 +76,7 @@ export default async function PostJobPage() {
         </div>
 
         <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <PostJobForm
-            defaultCountry={profile.country || "United Kingdom"}
-            defaultRegion={profile.region || ""}
-            defaultCity={profile.city || ""}
-            defaultPostcodePrefix={profile.postcode_prefix || ""}
-            defaultPostcodeFull={profile.postcode_full || ""}
-          />
+          <PostJobForm/>
         </div>
       </section>
     </main>
