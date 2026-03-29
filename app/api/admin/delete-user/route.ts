@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 type MaybeError = { message: string } | null;
@@ -17,13 +17,14 @@ const supabaseAdmin = createAdminClient(
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createServerClient();
+    const supabase = createServerClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -141,7 +142,6 @@ export async function POST(req: Request) {
       conversationIds = (conversations || []).map((c) => c.id);
     }
 
-    // direct user-linked rows
     {
       let error: MaybeError;
 
@@ -218,7 +218,6 @@ export async function POST(req: Request) {
       throwIf(error, "delete worker_reviews by worker");
     }
 
-    // conversation-linked rows
     if (conversationIds.length) {
       let error: MaybeError;
 
@@ -235,7 +234,6 @@ export async function POST(req: Request) {
       throwIf(error, "delete conversations");
     }
 
-    // booking-linked rows
     if (bookingIds.length) {
       let error: MaybeError;
 
@@ -288,7 +286,6 @@ export async function POST(req: Request) {
       throwIf(error, "delete bookings");
     }
 
-    // worker profile-linked rows
     if (workerProfileId) {
       let error: MaybeError;
 
@@ -329,7 +326,6 @@ export async function POST(req: Request) {
       throwIf(error, "delete worker_profile");
     }
 
-    // hirer profile-linked rows
     if (ownedJobIds.length) {
       let error: MaybeError;
 
@@ -366,7 +362,6 @@ export async function POST(req: Request) {
       throwIf(error, "delete hirer_profile");
     }
 
-    // legacy applications table directly linked to user
     {
       let error: MaybeError;
 
@@ -377,7 +372,6 @@ export async function POST(req: Request) {
       throwIf(error, "delete applications by worker user");
     }
 
-    // finally profile + auth
     {
       let error: MaybeError;
 
@@ -398,8 +392,7 @@ export async function POST(req: Request) {
     console.error("admin delete user error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Server error",
+        error: error instanceof Error ? error.message : "Server error",
       },
       { status: 500 }
     );
