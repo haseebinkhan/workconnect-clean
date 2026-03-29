@@ -119,7 +119,9 @@ export function getPostcodePrefixes(region: string, city: string): string[] {
   const prefixes =
     regionData.cities[city as keyof typeof regionData.cities] || [];
 
-  return [...prefixes].sort((a, b) => a.localeCompare(b));
+return [...(prefixes as string[])].sort((a, b) =>
+  String(a).localeCompare(String(b))
+);
 }
 
 export function isValidUKFullPostcode(value: string): boolean {
