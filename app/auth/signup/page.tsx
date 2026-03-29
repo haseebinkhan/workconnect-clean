@@ -9,7 +9,6 @@ import { getRegions } from "@/lib/uk-locations";
 export default function SignupPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-
   const regions = useMemo(() => getRegions(), []);
 
   const [fullName, setFullName] = useState("");
@@ -63,13 +62,15 @@ export default function SignupPage() {
           ? `${window.location.origin}/auth/update-password`
           : undefined;
 
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email: cleanEmail,
         password: cleanPassword,
         options: {
           emailRedirectTo: redirectTo,
           data: {
             full_name: cleanFullName,
+            region: cleanRegion,
+            country: "United Kingdom",
           },
         },
       });
@@ -79,30 +80,14 @@ export default function SignupPage() {
         return;
       }
 
-      const userId = data.user?.id;
-
-      if (userId) {
-        const { error: profileError } = await supabase.from("profiles").upsert({
-          id: userId,
-          full_name: cleanFullName,
-          email: cleanEmail,
-          country: "United Kingdom",
-          region: cleanRegion,
-          city: null,
-          postcode_prefix: null,
-          postcode_full: null,
-          is_active: true,
-        });
-
-        if (profileError) {
-          setErrorMessage(profileError.message);
-          return;
-        }
-      }
-
       setSuccessMessage(
         "Account created successfully. Please check your email to verify your account."
       );
+
+      setFullName("");
+      setEmail("");
+      setPassword("");
+      setRegion("");
 
       setTimeout(() => {
         router.push("/auth/login");
@@ -120,11 +105,14 @@ export default function SignupPage() {
       <section className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
           <p className="text-sm font-medium text-slate-500">Create account</p>
+
           <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
             Join WorkConnect
           </h1>
+
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Create your account and choose the UK nation you mainly want to use the platform in.
+            Create your account and choose the UK nation you mainly want to use
+            the platform in.
           </p>
 
           <form onSubmit={handleSignup} className="mt-8 space-y-5">
