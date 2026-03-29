@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { buildAccess } from "@/lib/access";
 import PostJobForm from "./PostJobForm";
 
 export default async function PostJobPage() {
@@ -14,50 +13,46 @@ export default async function PostJobPage() {
     redirect("/auth/login");
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile } = await supabase
     .from("profiles")
-    .select(
-      "id, full_name, worker_enabled, hirer_enabled, is_active, country, region, city"
-    )
+    .select(`
+      id,
+      full_name,
+      email,
+      hirer_enabled,
+      is_active,
+      country,
+      region,
+      city,
+      postcode_prefix,
+      postcode_full
+    `)
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profileError || !profile) {
-    redirect("/profile");
+  if (!profile?.is_active) {
+    redirect("/dashboard");
   }
 
-  if (!profile.is_active) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-        <section className="mx-auto max-w-4xl">
-          <div className="rounded-[2rem] border border-red-200 bg-white p-8 shadow-sm">
-            <h1 className="text-2xl font-bold text-slate-900">Post a job</h1>
-            <p className="mt-3 text-sm text-red-600">
-              Your account is not active. You cannot post jobs right now.
-            </p>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  const access = buildAccess(profile);
-
-  if (!access.canPostJobs) {
+  if (!profile.hirer_enabled) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
         <section className="mx-auto max-w-4xl">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-            <h1 className="text-2xl font-bold text-slate-900">Post a job</h1>
-            <p className="mt-3 text-sm text-slate-600">
-              You need hirer access before you can post jobs.
+            <p className="text-sm font-medium text-slate-500">Post a job</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+              Hirer mode is required
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              To post a job, first enable hirer mode in your profile settings.
             </p>
+
             <div className="mt-6">
               <a
                 href="/profile"
-                className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
+                className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
               >
-                Update profile
+                Go to profile settings
               </a>
             </div>
           </div>
@@ -65,63 +60,28 @@ export default async function PostJobPage() {
       </main>
     );
   }
-
-  const { data: hirerProfile } = await supabase
-    .from("hirer_profiles")
-    .select("id, company_name, contact_name")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!hirerProfile?.id) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-        <section className="mx-auto max-w-4xl">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-            <h1 className="text-2xl font-bold text-slate-900">Post a job</h1>
-            <p className="mt-3 text-sm text-slate-600">
-              Please complete your hirer profile before posting a job.
-            </p>
-            <div className="mt-6">
-              <a
-                href="/profile"
-                className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
-              >
-                Complete hirer profile
-              </a>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  const { data: areas } = await supabase
-    .from("areas")
-    .select("id, name, slug, region")
-    .eq("is_active", true)
-    .order("name", { ascending: true });
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-5xl">
         <div className="mb-8">
-          <p className="text-sm font-medium text-slate-500">Hiring</p>
+          <p className="text-sm font-medium text-slate-500">Create a job</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-            Post a job
+            Post a local job
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-            Create a stronger job brief with structured UK location, pricing,
-            contract style, and work requirements. Your post will be submitted
-            to admin for review before going live.
+            Create a clear job post with category, title, description, area, and
+            budget so nearby workers can find it more easily.
           </p>
         </div>
 
         <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <PostJobForm
-            areas={areas ?? []}
             defaultCountry={profile.country || "United Kingdom"}
             defaultRegion={profile.region || ""}
             defaultCity={profile.city || ""}
+            defaultPostcodePrefix={profile.postcode_prefix || ""}
+            defaultPostcodeFull={profile.postcode_full || ""}
           />
         </div>
       </section>
