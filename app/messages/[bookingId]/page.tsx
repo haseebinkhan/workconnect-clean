@@ -5,9 +5,9 @@ import BookingMessagesClient from "./BookingMessagesClient";
 export default async function Page({
   params,
 }: {
-  params: { bookingId: string };
+  params: Promise<{ bookingId: string }>;
 }) {
-  const { bookingId } = params;
+  const { bookingId } = await params;
 
   const supabase = await createClient();
 
@@ -78,7 +78,13 @@ export default async function Page({
         .from("profiles")
         .select("id, full_name, email")
         .in("id", participantIds)
-    : { data: [] as Array<{ id: string; full_name: string | null; email: string | null }> };
+    : {
+        data: [] as Array<{
+          id: string;
+          full_name: string | null;
+          email: string | null;
+        }>,
+      };
 
   const profileMap = new Map((profiles || []).map((item) => [item.id, item]));
 
