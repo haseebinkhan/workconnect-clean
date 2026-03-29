@@ -1,8 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import ModeSwitcher from "@/components/ModeSwitcher";
-import ProfileModesForm from "./ProfileModesForm";
 import ProfileForm from "./profile-form";
 
 export default async function ProfilePage() {
@@ -16,177 +13,184 @@ export default async function ProfilePage() {
     redirect("/auth/login");
   }
 
-  const [
-    { data: profile, error: profileError },
-    { data: workerProfile },
-    { data: hirerProfile },
-  ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select(`
-        id,
-        full_name,
-        email,
-        country,
-        region,
-        city,
-        postcode,
-        area_slug,
-        bio,
-        phone_number,
-        whatsapp_number,
-        worker_enabled,
-        hirer_enabled,
-        is_active,
-        is_admin,
-        role,
-        show_phone_after_accept,
-        show_whatsapp_after_accept,
-        created_at,
-        updated_at
-      `)
-      .eq("id", user.id)
-      .maybeSingle(),
+  const [{ data: profile }, { data: workerProfile }, { data: hirerProfile }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select(`
+          id,
+          email,
+          full_name,
+          role,
+          worker_enabled,
+          hirer_enabled,
+          is_active,
+          avatar_url,
+          bio,
+          phone_number,
+          whatsapp_number,
+          show_phone_after_accept,
+          show_whatsapp_after_accept,
+          country,
+          region,
+          city,
+          area_slug,
+          postcode_prefix,
+          postcode_full
+        `)
+        .eq("id", user.id)
+        .maybeSingle(),
 
-    supabase
-      .from("worker_profiles")
-      .select(`
-        id,
-        headline,
-        category,
-        description,
-        is_open_to_work,
-        hourly_rate,
-        hourly_rate_min,
-        hourly_rate_max,
-        rating_avg,
-        rating_count,
-        jobs_completed,
-        availability
-      `)
-      .eq("user_id", user.id)
-      .maybeSingle(),
+      supabase
+        .from("worker_profiles")
+        .select(`
+          id,
+          user_id,
+          headline,
+          description,
+          category,
+          country,
+          region,
+          city,
+          area_slug,
+          postcode,
+          postcode_prefix,
+          postcode_full,
+          hourly_rate,
+          hourly_rate_min,
+          hourly_rate_max,
+          is_open_to_work,
+          is_public,
+          availability,
+          availability_notes,
+          certifications,
+          experience_years
+        `)
+        .eq("user_id", user.id)
+        .maybeSingle(),
 
-    supabase
-      .from("hirer_profiles")
-      .select(`
-        id,
-        company_name,
-        contact_name,
-        hirer_type,
-        industry
-      `)
-      .eq("user_id", user.id)
-      .maybeSingle(),
-  ]);
+      supabase
+        .from("hirer_profiles")
+        .select(`
+          id,
+          user_id,
+          company_name,
+          contact_name,
+          location,
+          industry
+        `)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
 
-  if (profileError || !profile) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
-        <section className="mx-auto max-w-4xl">
-          <div className="rounded-[2rem] border border-red-200 bg-white p-8 shadow-sm">
-            <h1 className="text-2xl font-bold text-slate-900">Profile</h1>
-            <p className="mt-3 text-sm text-red-600">
-              {profileError?.message || "Could not load your profile."}
-            </p>
-          </div>
-        </section>
-      </main>
-    );
-  }
+  const initialProfile = {
+    id: profile?.id ?? user.id,
+    email: profile?.email ?? user.email ?? "",
+    fullName: profile?.full_name ?? "",
+    role: profile?.role ?? null,
+    workerEnabled: profile?.worker_enabled ?? false,
+    hirerEnabled: profile?.hirer_enabled ?? false,
+    isActive: profile?.is_active ?? true,
+    avatarUrl: profile?.avatar_url ?? "",
+    bio: profile?.bio ?? "",
+    phoneNumber: profile?.phone_number ?? "",
+    whatsappNumber: profile?.whatsapp_number ?? "",
+    showPhoneAfterAccept: profile?.show_phone_after_accept ?? true,
+    showWhatsappAfterAccept: profile?.show_whatsapp_after_accept ?? true,
 
-  const isAdmin = profile.is_admin === true || profile.role === "admin";
+    country:
+      workerProfile?.country ||
+      profile?.country ||
+      "United Kingdom",
+
+    region:
+      workerProfile?.region ||
+      profile?.region ||
+      "",
+
+    city:
+      workerProfile?.city ||
+      profile?.city ||
+      "",
+
+    areaSlug:
+      workerProfile?.area_slug ||
+      profile?.area_slug ||
+      "",
+
+    postcodePrefix:
+      workerProfile?.postcode_prefix ||
+      profile?.postcode_prefix ||
+      "",
+
+    postcodeFull:
+      workerProfile?.postcode_full ||
+      profile?.postcode_full ||
+      "",
+
+    workerProfile: {
+      id: workerProfile?.id ?? null,
+      headline: workerProfile?.headline ?? "",
+      description: workerProfile?.description ?? "",
+      category: workerProfile?.category ?? "",
+      hourlyRate:
+        workerProfile?.hourly_rate != null
+          ? String(workerProfile.hourly_rate)
+          : "",
+      hourlyRateMin:
+        workerProfile?.hourly_rate_min != null
+          ? String(workerProfile.hourly_rate_min)
+          : "",
+      hourlyRateMax:
+        workerProfile?.hourly_rate_max != null
+          ? String(workerProfile.hourly_rate_max)
+          : "",
+      isOpenToWork: workerProfile?.is_open_to_work ?? true,
+      isPublic: workerProfile?.is_public ?? true,
+      availability:
+        workerProfile?.availability &&
+        typeof workerProfile.availability === "object" &&
+        !Array.isArray(workerProfile.availability)
+          ? workerProfile.availability
+          : {},
+      availabilityNotes: workerProfile?.availability_notes ?? "",
+      certifications: Array.isArray(workerProfile?.certifications)
+        ? workerProfile!.certifications
+        : [],
+      experienceYears:
+        workerProfile?.experience_years != null
+          ? String(workerProfile.experience_years)
+          : "",
+      postcode:
+        workerProfile?.postcode ?? "",
+    },
+
+    hirerProfile: {
+      id: hirerProfile?.id ?? null,
+      companyName: hirerProfile?.company_name ?? "",
+      contactName: hirerProfile?.contact_name ?? "",
+      location: hirerProfile?.location ?? "",
+      industry: hirerProfile?.industry ?? "",
+    },
+  };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-6xl">
-
-        {/* HEADER */}
         <div className="mb-8">
           <p className="text-sm font-medium text-slate-500">Account</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">
-            My profile
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            Profile settings
           </h1>
-          <p className="mt-3 text-sm text-slate-600">
-            Manage your personal details and account settings.
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+            Manage your personal details, contact preferences, working modes,
+            and location. Your region, city, and postcode prefix help the
+            platform show better local matches.
           </p>
         </div>
 
-        {/* MODE SWITCHER */}
-        {profile.worker_enabled && profile.hirer_enabled && (
-          <div className="mb-8">
-            <ModeSwitcher
-              currentMode="all"
-              workerEnabled={true}
-              hirerEnabled={true}
-            />
-          </div>
-        )}
-
-        <div className="grid gap-6 lg:grid-cols-[1.3fr,0.9fr]">
-
-          {/* LEFT SIDE */}
-          <div className="space-y-6">
-
-            <ProfileModesForm
-              workerEnabled={profile.worker_enabled === true}
-              hirerEnabled={profile.hirer_enabled === true}
-            />
-
-            {/* MAIN FORM */}
-            <ProfileForm
-              initialFullName={profile.full_name || ""}
-              initialEmail={profile.email || ""}
-              initialCity={profile.city || ""}
-              initialPostcode={profile.postcode || ""}
-              initialAreaSlug={profile.area_slug || "belfast"}
-              initialWorkerEnabled={profile.worker_enabled === true}
-              initialHirerEnabled={profile.hirer_enabled === true}
-              initialAvailability={workerProfile?.availability || null}
-              initialPhoneNumber={profile.phone_number || ""}
-              initialWhatsappNumber={profile.whatsapp_number || ""}
-              initialShowPhoneAfterAccept={profile.show_phone_after_accept === true}
-              initialShowWhatsappAfterAccept={profile.show_whatsapp_after_accept === true}
-              initialBio={profile.bio || ""}
-
-              // NEW UK FIELDS
-              initialCountry={profile.country || "United Kingdom"}
-              initialRegion={profile.region || "Northern Ireland"}
-            />
-
-          </div>
-
-          {/* RIGHT SIDE */}
-          <div className="space-y-6">
-
-            {/* SUMMARY */}
-            <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-bold">Profile summary</h2>
-
-              <div className="mt-4 space-y-2 text-sm">
-                <p><strong>Name:</strong> {profile.full_name}</p>
-                <p><strong>Email:</strong> {profile.email}</p>
-                <p><strong>Country:</strong> {profile.country || "UK"}</p>
-                <p><strong>Region:</strong> {profile.region || "-"}</p>
-                <p><strong>City:</strong> {profile.city || "-"}</p>
-              </div>
-            </div>
-
-            {/* NAVIGATION */}
-            <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
-              <Link
-                href="/dashboard"
-                className="block rounded-xl bg-indigo-600 px-4 py-3 text-center text-white"
-              >
-                Back to dashboard
-              </Link>
-            </div>
-
-          </div>
-
-        </div>
+        <ProfileForm initialProfile={initialProfile} />
       </section>
     </main>
   );
 }
-

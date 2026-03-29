@@ -15,7 +15,8 @@ export type WorkerSearchItem = {
   region: string | null;
   city: string | null;
   areaSlug: string | null;
-  postcode: string | null;
+  postcodePrefix: string | null;
+  postcodeFull: string | null;
   hourlyRate: number | null;
   hourlyRateMin: number | null;
   hourlyRateMax: number | null;
@@ -42,7 +43,7 @@ export default async function WorkersPage() {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name, worker_enabled, hirer_enabled, is_active")
+    .select("id, full_name, worker_enabled, hirer_enabled, is_active, country, region")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -69,9 +70,11 @@ export default async function WorkersPage() {
       description,
       category,
       country,
+      region,
       city,
       area_slug,
-      postcode,
+      postcode_prefix,
+      postcode_full,
       hourly_rate,
       hourly_rate_min,
       hourly_rate_max,
@@ -99,7 +102,7 @@ export default async function WorkersPage() {
   const { data: profiles } = workerUserIds.length
     ? await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url, region")
+        .select("id, full_name, avatar_url, country, region, city, postcode_prefix, postcode_full")
         .in("id", workerUserIds)
     : { data: [] };
 
@@ -116,11 +119,12 @@ export default async function WorkersPage() {
       headline: worker.headline || null,
       description: worker.description || null,
       category: worker.category || null,
-      country: worker.country || "United Kingdom",
-      region: person?.region || null,
-      city: worker.city || null,
+      country: worker.country || person?.country || "United Kingdom",
+      region: worker.region || person?.region || null,
+      city: worker.city || person?.city || null,
       areaSlug: worker.area_slug || null,
-      postcode: worker.postcode || null,
+      postcodePrefix: worker.postcode_prefix || person?.postcode_prefix || null,
+      postcodeFull: worker.postcode_full || person?.postcode_full || null,
       hourlyRate: worker.hourly_rate ?? null,
       hourlyRateMin: worker.hourly_rate_min ?? null,
       hourlyRateMax: worker.hourly_rate_max ?? null,
@@ -140,6 +144,10 @@ export default async function WorkersPage() {
     };
   });
 
-  return <WorkersSearchClient workers={workers} />;
+  return (
+    <WorkersSearchClient
+      workers={workers}
+      defaultRegion={profile.region || ""}
+    />
+  );
 }
-

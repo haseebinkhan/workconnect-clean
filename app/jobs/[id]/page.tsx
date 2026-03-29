@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ApplyJobButton from "@/components/jobs/ApplyJobButton";
+import { autoCloseExpiredJobs } from "@/lib/jobs/autoCloseExpiredJobs";
 
 type PageProps = {
   params: Promise<{
@@ -27,43 +28,32 @@ function isExpired(expiresAt?: string | null) {
   return new Date(expiresAt).getTime() <= Date.now();
 }
 
-function formatBudget(
-  budgetMin?: number | null,
-  budgetMax?: number | null,
-  currencyCode?: string | null
-) {
-  const currency = currencyCode || "GBP";
-
-  if (budgetMin != null && budgetMax != null) {
-    return `${currency} ${budgetMin} - ${budgetMax}`;
-  }
-
-  if (budgetMin != null) {
-    return `${currency} ${budgetMin}+`;
-  }
-
-  if (budgetMax != null) {
-    return `Up to ${currency} ${budgetMax}`;
-  }
-
-  return "Not specified";
-}
-
-function formatLocation(job: {
+function formatLocation({
+  country,
+  region,
+  city,
+  postcodePrefix,
+  postcodeFull,
+  areaSlug,
+}: {
   country?: string | null;
   region?: string | null;
   city?: string | null;
-  postcode?: string | null;
-  area_slug?: string | null;
+  postcodePrefix?: string | null;
+  postcodeFull?: string | null;
+  areaSlug?: string | null;
 }) {
-  const parts = [job.city, job.region, job.country].filter(Boolean);
+  const parts = [city, region, country].filter(Boolean);
   if (parts.length > 0) return parts.join(", ");
-  if (job.postcode) return job.postcode;
-  if (job.area_slug) return job.area_slug;
+  if (postcodePrefix) return postcodePrefix;
+  if (postcodeFull) return postcodeFull;
+  if (areaSlug) return areaSlug;
   return "Local area";
 }
 
 export default async function JobDetailsPage({ params }: PageProps) {
+  await autoCloseExpiredJobs();
+
   const { id } = await params;
   const supabase = await createClient();
 
@@ -86,7 +76,8 @@ export default async function JobDetailsPage({ params }: PageProps) {
         country,
         region,
         city,
-        postcode,
+        postcode_prefix,
+        postcode_full,
         area_slug,
         status,
         visibility,
@@ -151,6 +142,15 @@ export default async function JobDetailsPage({ params }: PageProps) {
     job.visibility === "public" &&
     !expired;
 
+  const displayLocation = formatLocation({
+    country: job.country,
+    region: job.region,
+    city: job.city,
+    postcodePrefix: job.postcode_prefix,
+    postcodeFull: job.postcode_full,
+    areaSlug: job.area_slug,
+  });
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-7xl">
@@ -181,17 +181,28 @@ export default async function JobDetailsPage({ params }: PageProps) {
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Budget</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {formatBudget(job.budget_min, job.budget_max, job.currency_code)}
+                  {job.budget_min != null || job.budget_max != null
+                    ? `${job.currency_code ?? "GBP"} ${job.budget_min ?? 0} - ${
+                        job.budget_max ?? 0
+                      }`
+                    : "Not specified"}
                 </p>
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-sm text-slate-500">Location</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
-                  {formatLocation(job)}
+                  {displayLocation}
                 </p>
-                {job.postcode ? (
-                  <p className="mt-1 text-xs text-slate-500">{job.postcode}</p>
+                {job.postcode_prefix ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Prefix: {job.postcode_prefix}
+                  </p>
+                ) : null}
+                {job.postcode_full ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Full postcode: {job.postcode_full}
+                  </p>
                 ) : null}
               </div>
 

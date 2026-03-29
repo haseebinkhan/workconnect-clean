@@ -71,7 +71,6 @@ export default function RequestWorkerCard({
     selectedMeetingAt || defaultFutureDateTime()
   );
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     if (selectedMeetingAt) {
@@ -80,10 +79,9 @@ export default function RequestWorkerCard({
   }, [selectedMeetingAt]);
 
   async function handleRequest() {
-    try {
-      setLoading(true);
-      setErrorMessage("");
+    setLoading(true);
 
+    try {
       const {
         data: { user },
         error: userError,
@@ -94,23 +92,8 @@ export default function RequestWorkerCard({
         return;
       }
 
-      if (!title.trim()) {
-        setErrorMessage("Please enter a request title.");
-        return;
-      }
-
-      if (!message.trim()) {
-        setErrorMessage("Please enter a message.");
-        return;
-      }
-
       if (!meetingAt) {
-        setErrorMessage("Please choose a meeting time before sending the request.");
-        return;
-      }
-
-      if (budgetAmount.trim() && Number.isNaN(Number(budgetAmount))) {
-        setErrorMessage("Budget must be a valid number.");
+        alert("Please choose a meeting time before sending the request.");
         return;
       }
 
@@ -141,8 +124,7 @@ export default function RequestWorkerCard({
           router.push("/messages/" + result.bookingId);
           return;
         }
-
-        setErrorMessage(result.error || "Could not send request.");
+        alert(result.error || "Could not send request");
         return;
       }
 
@@ -151,16 +133,10 @@ export default function RequestWorkerCard({
       router.refresh();
     } catch (error) {
       console.error("request worker error:", error);
-      setErrorMessage("Could not send request.");
+      alert("Could not send request");
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleClose() {
-    if (loading) return;
-    setOpen(false);
-    setErrorMessage("");
   }
 
   return (
@@ -189,21 +165,14 @@ export default function RequestWorkerCard({
 
               <button
                 type="button"
-                onClick={handleClose}
-                disabled={loading}
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setOpen(false)}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
                 Close
               </button>
             </div>
 
             <div className="mt-6 space-y-4">
-              {errorMessage ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {errorMessage}
-                </div>
-              ) : null}
-
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Request title
@@ -274,9 +243,8 @@ export default function RequestWorkerCard({
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={handleClose}
-                  disabled={loading}
-                  className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => setOpen(false)}
+                  className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
                   Cancel
                 </button>
@@ -285,7 +253,7 @@ export default function RequestWorkerCard({
                   type="button"
                   onClick={handleRequest}
                   disabled={loading}
-                  className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
                 >
                   {loading ? "Sending..." : "Send request"}
                 </button>

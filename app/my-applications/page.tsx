@@ -38,17 +38,26 @@ function safeExternalUrl(url?: string | null) {
   return null;
 }
 
-function formatLocation(input: {
-  city?: string | null;
-  region?: string | null;
+function formatLocation({
+  country,
+  region,
+  city,
+  postcodePrefix,
+  postcodeFull,
+  areaSlug,
+}: {
   country?: string | null;
-  postcode?: string | null;
-  area_slug?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcodePrefix?: string | null;
+  postcodeFull?: string | null;
+  areaSlug?: string | null;
 }) {
-  const parts = [input.city, input.region, input.country].filter(Boolean);
+  const parts = [city, region, country].filter(Boolean);
   if (parts.length > 0) return parts.join(", ");
-  if (input.postcode) return input.postcode;
-  if (input.area_slug) return input.area_slug;
+  if (postcodePrefix) return postcodePrefix;
+  if (postcodeFull) return postcodeFull;
+  if (areaSlug) return areaSlug;
   return "Not specified";
 }
 
@@ -149,7 +158,8 @@ export default async function MyApplicationsPage() {
           country,
           region,
           city,
-          postcode,
+          postcode_prefix,
+          postcode_full,
           area_slug,
           currency_code,
           budget_min,
@@ -200,6 +210,15 @@ export default async function MyApplicationsPage() {
               const linkedinUrl = safeExternalUrl(application.linkedin_url);
               const cvUrl = safeExternalUrl(application.cv_url);
 
+              const jobLocation = formatLocation({
+                country: job?.country,
+                region: job?.region,
+                city: job?.city,
+                postcodePrefix: job?.postcode_prefix,
+                postcodeFull: job?.postcode_full,
+                areaSlug: job?.area_slug,
+              });
+
               return (
                 <article
                   key={application.id}
@@ -229,19 +248,11 @@ export default async function MyApplicationsPage() {
                         <div className="rounded-2xl bg-slate-50 p-4">
                           <p className="text-sm text-slate-500">Location</p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {job
-                              ? formatLocation({
-                                  city: job.city,
-                                  region: job.region,
-                                  country: job.country,
-                                  postcode: job.postcode,
-                                  area_slug: job.area_slug,
-                                })
-                              : "Not specified"}
+                            {jobLocation}
                           </p>
-                          {job?.postcode ? (
+                          {job?.postcode_prefix ? (
                             <p className="mt-1 text-xs text-slate-500">
-                              {job.postcode}
+                              Prefix: {job.postcode_prefix}
                             </p>
                           ) : null}
                         </div>
@@ -370,4 +381,3 @@ export default async function MyApplicationsPage() {
     </main>
   );
 }
-

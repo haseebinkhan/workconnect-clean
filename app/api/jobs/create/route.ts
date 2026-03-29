@@ -17,6 +17,21 @@ function slugifyArea(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeUpperText(value: unknown) {
+  const text = normalizeText(value);
+  return text ? text.toUpperCase() : "";
+}
+
+function isValidUKFullPostcode(value: string) {
+  const text = value.trim().toUpperCase();
+  if (!text) return true;
+  return /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/.test(text);
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -32,31 +47,19 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const title = typeof body?.title === "string" ? body.title.trim() : "";
-    const description =
-      typeof body?.description === "string" ? body.description.trim() : "";
+    const title = normalizeText(body?.title);
+    const description = normalizeText(body?.description);
 
-    const country =
-      typeof body?.country === "string" && body.country.trim()
-        ? body.country.trim()
-        : "United Kingdom";
+    const country = normalizeText(body?.country) || "United Kingdom";
+    const region = normalizeText(body?.region);
+    const city = normalizeText(body?.city);
 
-    const region =
-      typeof body?.region === "string" ? body.region.trim() : "";
+    const postcodePrefix = normalizeUpperText(body?.postcodePrefix);
+    const postcodeFullRaw = normalizeUpperText(body?.postcodeFull);
+    const postcodeFull = postcodeFullRaw || null;
 
-    const city =
-      typeof body?.city === "string" ? body.city.trim() : "";
-
-    const postcode =
-      typeof body?.postcode === "string"
-        ? body.postcode.trim().toUpperCase()
-        : "";
-
-    const rawAreaSlug =
-      typeof body?.areaSlug === "string" ? body.areaSlug.trim() : "";
-
-    const areaSlug =
-      rawAreaSlug || slugifyArea(city || region || "united-kingdom");
+    const rawAreaSlug = normalizeText(body?.areaSlug);
+    const areaSlug = rawAreaSlug || slugifyArea(city || region || "united-kingdom");
 
     const budgetMin =
       typeof body?.budgetMin === "number" ? body.budgetMin : null;
@@ -65,14 +68,10 @@ export async function POST(req: Request) {
       typeof body?.budgetMax === "number" ? body.budgetMax : null;
 
     const currencyCode =
-      typeof body?.currencyCode === "string" && body.currencyCode.trim()
-        ? body.currencyCode.trim().toUpperCase()
-        : "GBP";
+      normalizeUpperText(body?.currencyCode) || "GBP";
 
     const locationType =
-      typeof body?.locationType === "string" && body.locationType.trim()
-        ? body.locationType.trim()
-        : "local";
+      normalizeText(body?.locationType) || "local";
 
     if (!title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -106,9 +105,16 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!postcode) {
+    if (!postcodePrefix) {
       return NextResponse.json(
-        { error: "Postcode is required." },
+        { error: "Postcode prefix is required." },
+        { status: 400 }
+      );
+    }
+
+    if (postcodeFull && !isValidUKFullPostcode(postcodeFull)) {
+      return NextResponse.json(
+        { error: "Full postcode is not valid." },
         { status: 400 }
       );
     }
@@ -150,7 +156,8 @@ export async function POST(req: Request) {
         country,
         region,
         city,
-        postcode,
+        postcode_prefix: postcodePrefix,
+        postcode_full: postcodeFull,
         budget_min: budgetMin,
         budget_max: budgetMax,
         currency_code: currencyCode,
@@ -188,7 +195,8 @@ export async function POST(req: Request) {
             country,
             region,
             city,
-            postcode,
+            postcode_prefix: postcodePrefix,
+            postcode_full: postcodeFull,
             area_slug: areaSlug,
             expires_at: createdJob.expires_at,
           },
@@ -207,4 +215,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
-

@@ -16,16 +16,9 @@ export default async function PostJobPage() {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select(`
-      id,
-      full_name,
-      worker_enabled,
-      hirer_enabled,
-      is_active,
-      country,
-      region,
-      city
-    `)
+    .select(
+      "id, full_name, worker_enabled, hirer_enabled, is_active, country, region, city"
+    )
     .eq("id", user.id)
     .maybeSingle();
 
@@ -35,12 +28,12 @@ export default async function PostJobPage() {
 
   if (!profile.is_active) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
         <section className="mx-auto max-w-4xl">
           <div className="rounded-[2rem] border border-red-200 bg-white p-8 shadow-sm">
             <h1 className="text-2xl font-bold text-slate-900">Post a job</h1>
             <p className="mt-3 text-sm text-red-600">
-              Your account is not active.
+              Your account is not active. You cannot post jobs right now.
             </p>
           </div>
         </section>
@@ -52,17 +45,17 @@ export default async function PostJobPage() {
 
   if (!access.canPostJobs) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
         <section className="mx-auto max-w-4xl">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
             <h1 className="text-2xl font-bold text-slate-900">Post a job</h1>
             <p className="mt-3 text-sm text-slate-600">
-              You need hirer mode enabled.
+              You need hirer access before you can post jobs.
             </p>
             <div className="mt-6">
               <a
                 href="/profile"
-                className="rounded-2xl bg-slate-900 px-5 py-3 text-white"
+                className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
               >
                 Update profile
               </a>
@@ -81,19 +74,19 @@ export default async function PostJobPage() {
 
   if (!hirerProfile?.id) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
         <section className="mx-auto max-w-4xl">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
             <h1 className="text-2xl font-bold text-slate-900">Post a job</h1>
             <p className="mt-3 text-sm text-slate-600">
-              Complete hirer profile first.
+              Please complete your hirer profile before posting a job.
             </p>
             <div className="mt-6">
               <a
                 href="/profile"
-                className="rounded-2xl bg-slate-900 px-5 py-3 text-white"
+                className="inline-flex rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white"
               >
-                Complete profile
+                Complete hirer profile
               </a>
             </div>
           </div>
@@ -102,40 +95,32 @@ export default async function PostJobPage() {
     );
   }
 
-  // OLD system (keep for compatibility)
   const { data: areas } = await supabase
     .from("areas")
     .select("id, name, slug, region")
     .eq("is_active", true)
     .order("name", { ascending: true });
 
-  // NEW UK system
-  const UK_REGIONS = [
-    "England",
-    "Northern Ireland",
-    "Scotland",
-    "Wales",
-  ];
-
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-5xl">
         <div className="mb-8">
-          <p className="text-sm text-slate-500">Hiring</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">
+          <p className="text-sm font-medium text-slate-500">Hiring</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             Post a job
           </h1>
-          <p className="mt-3 text-sm text-slate-600">
-            Create a job with location, pricing, and requirements.
+          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+            Create a stronger job brief with structured UK location, pricing,
+            contract style, and work requirements. Your post will be submitted
+            to admin for review before going live.
           </p>
         </div>
 
-        <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <PostJobForm
-            areas={areas ?? []} // backward compatible
-            regions={UK_REGIONS} // NEW
+            areas={areas ?? []}
             defaultCountry={profile.country || "United Kingdom"}
-            defaultRegion={profile.region || "Northern Ireland"}
+            defaultRegion={profile.region || ""}
             defaultCity={profile.city || ""}
           />
         </div>
@@ -143,4 +128,3 @@ export default async function PostJobPage() {
     </main>
   );
 }
-

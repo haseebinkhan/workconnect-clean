@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import SaveWorkerButton from "@/components/workers/SaveWorkerButton";
 import type { WorkerSearchItem } from "./page";
+import { getCities, getPostcodePrefixes, getRegions } from "@/lib/uk-locations";
 
 const DAY_OPTIONS = [
   { value: "all", label: "Any day" },
@@ -14,13 +15,6 @@ const DAY_OPTIONS = [
   { value: "friday", label: "Friday" },
   { value: "saturday", label: "Saturday" },
   { value: "sunday", label: "Sunday" },
-];
-
-const REGION_OPTIONS = [
-  "England",
-  "Northern Ireland",
-  "Scotland",
-  "Wales",
 ];
 
 const DEFAULT_CATEGORY_OPTIONS = [
@@ -111,22 +105,25 @@ function normalizeText(value?: string | null) {
 function formatLocation(worker: WorkerSearchItem) {
   const parts = [worker.city, worker.region, worker.country].filter(Boolean);
   if (parts.length > 0) return parts.join(", ");
-  if (worker.postcode) return worker.postcode;
+  if (worker.postcodePrefix) return worker.postcodePrefix;
   if (worker.areaSlug) return worker.areaSlug;
   return "Location not specified";
 }
 
 export default function WorkersSearchClient({
   workers,
+  defaultRegion = "",
 }: {
   workers: WorkerSearchItem[];
+  defaultRegion?: string;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
-  const [country, setCountry] = useState("all");
-  const [region, setRegion] = useState("all");
+  const [country, setCountry] = useState("United Kingdom");
+  const [region, setRegion] = useState(defaultRegion || "");
+  const [city, setCity] = useState("all");
+  const [postcodePrefix, setPostcodePrefix] = useState("all");
   const [selectedDay, setSelectedDay] = useState("all");
-  const [postcodeQuery, setPostcodeQuery] = useState("");
 
   const categories = useMemo(() => {
     const dbCategories = workers
@@ -138,29 +135,15 @@ export default function WorkersSearchClient({
     );
   }, [workers]);
 
-  const countryOptions = useMemo(() => {
-    const dbCountries = workers
-      .map((w) => w.country)
-      .filter(Boolean) as string[];
-
-    return [...new Set(["United Kingdom", ...dbCountries])].sort((a, b) =>
-      a.localeCompare(b)
-    );
-  }, [workers]);
-
-  const regionOptions = useMemo(() => {
-    const dbRegions = workers
-      .map((w) => w.region)
-      .filter(Boolean) as string[];
-
-    return [...new Set([...REGION_OPTIONS, ...dbRegions])].sort((a, b) =>
-      a.localeCompare(b)
-    );
-  }, [workers]);
+  const regions = useMemo(() => getRegions(), []);
+  const cityOptions = useMemo(() => (region ? getCities(region) : []), [region]);
+  const postcodePrefixOptions = useMemo(() => {
+    if (!region || city === "all") return [];
+    return getPostcodePrefixes(region, city);
+  }, [region, city]);
 
   const filteredWorkers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const postcodeSearch = postcodeQuery.trim().toLowerCase();
 
     return workers.filter((worker) => {
       const haystack = [
@@ -172,7 +155,8 @@ export default function WorkersSearchClient({
         worker.region || "",
         worker.city || "",
         worker.areaSlug || "",
-        worker.postcode || "",
+        worker.postcodePrefix || "",
+        worker.postcodeFull || "",
         (worker.certifications || []).join(" "),
       ]
         .join(" ")
@@ -191,26 +175,42 @@ export default function WorkersSearchClient({
           : normalizeText(worker.country) === normalizeText(country);
 
       const regionMatch =
-        region === "all"
+        !region
           ? true
           : normalizeText(worker.region) === normalizeText(region);
 
-      const availabilityMatch = isAvailableOnDay(worker, selectedDay);
+      const cityMatch =
+        city === "all"
+          ? true
+          : normalizeText(worker.city) === normalizeText(city);
 
-      const postcodeMatch = postcodeSearch
-        ? normalizeText(worker.postcode).includes(postcodeSearch)
-        : true;
+      const postcodePrefixMatch =
+        postcodePrefix === "all"
+          ? true
+          : normalizeText(worker.postcodePrefix) === normalizeText(postcodePrefix);
+
+      const availabilityMatch = isAvailableOnDay(worker, selectedDay);
 
       return (
         queryMatch &&
         categoryMatch &&
         countryMatch &&
         regionMatch &&
-        availabilityMatch &&
-        postcodeMatch
+        cityMatch &&
+        postcodePrefixMatch &&
+        availabilityMatch
       );
     });
-  }, [workers, query, category, country, region, selectedDay, postcodeQuery]);
+  }, [
+    workers,
+    query,
+    category,
+    country,
+    region,
+    city,
+    postcodePrefix,
+    selectedDay,
+  ]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
@@ -225,8 +225,8 @@ export default function WorkersSearchClient({
                 Find workers
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-                Search workers across the United Kingdom by location, category,
-                skills, and availability.
+                Search workers across the United Kingdom by region, city, postcode prefix,
+                category, skills, and availability.
               </p>
             </div>
 
@@ -260,12 +260,8 @@ export default function WorkersSearchClient({
                 onChange={(e) => setCountry(e.target.value)}
                 className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
               >
+                <option value="United Kingdom">United Kingdom</option>
                 <option value="all">All countries</option>
-                {countryOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
               </select>
             </div>
 
@@ -275,11 +271,16 @@ export default function WorkersSearchClient({
               </label>
               <select
                 value={region}
-                onChange={(e) => setRegion(e.target.value)}
+                onChange={(e) => {
+                  const nextRegion = e.target.value;
+                  setRegion(nextRegion);
+                  setCity("all");
+                  setPostcodePrefix("all");
+                }}
                 className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
               >
-                <option value="all">All regions</option>
-                {regionOptions.map((item) => (
+                <option value="">All regions</option>
+                {regions.map((item) => (
                   <option key={item} value={item}>
                     {item}
                   </option>
@@ -289,27 +290,42 @@ export default function WorkersSearchClient({
 
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                Postcode
+                City / main area
               </label>
-              <input
-                value={postcodeQuery}
-                onChange={(e) => setPostcodeQuery(e.target.value.toUpperCase())}
-                placeholder="e.g. BT7"
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 uppercase outline-none transition focus:border-indigo-500"
-              />
+              <select
+                value={city}
+                onChange={(e) => {
+                  setCity(e.target.value);
+                  setPostcodePrefix("all");
+                }}
+                disabled={!region}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500 disabled:bg-slate-100"
+              >
+                <option value="all">
+                  {region ? "All cities / areas" : "Select region first"}
+                </option>
+                {cityOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                Category
+                Postcode prefix
               </label>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
+                value={postcodePrefix}
+                onChange={(e) => setPostcodePrefix(e.target.value)}
+                disabled={!region || city === "all"}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500 disabled:bg-slate-100"
               >
-                <option value="all">All categories</option>
-                {categories.map((item) => (
+                <option value="all">
+                  {city !== "all" ? "All prefixes" : "Select city first"}
+                </option>
+                {postcodePrefixOptions.map((item) => (
                   <option key={item} value={item}>
                     {item}
                   </option>
@@ -329,6 +345,26 @@ export default function WorkersSearchClient({
                 {DAY_OPTIONS.map((day) => (
                   <option key={day.value} value={day.value}>
                     {day.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Category
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
+              >
+                <option value="all">All categories</option>
+                {categories.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
                   </option>
                 ))}
               </select>
@@ -392,7 +428,7 @@ export default function WorkersSearchClient({
                       Postcode
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {worker.postcode || "Not specified"}
+                      {worker.postcodePrefix || worker.postcodeFull || "Not specified"}
                     </p>
                   </div>
 
@@ -449,7 +485,7 @@ export default function WorkersSearchClient({
                   No workers found
                 </h3>
                 <p className="mt-3 text-slate-600">
-                  Try changing location, postcode, category, or availability.
+                  Try changing region, city, postcode prefix, category, or availability.
                 </p>
               </div>
             </div>
@@ -459,4 +495,3 @@ export default function WorkersSearchClient({
     </main>
   );
 }
-

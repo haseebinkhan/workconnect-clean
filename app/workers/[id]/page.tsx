@@ -84,18 +84,21 @@ function formatLocation({
   country,
   region,
   city,
-  postcode,
+  postcodePrefix,
+  postcodeFull,
   areaSlug,
 }: {
   country?: string | null;
   region?: string | null;
   city?: string | null;
-  postcode?: string | null;
+  postcodePrefix?: string | null;
+  postcodeFull?: string | null;
   areaSlug?: string | null;
 }) {
   const parts = [city, region, country].filter(Boolean);
   if (parts.length > 0) return parts.join(", ");
-  if (postcode) return postcode;
+  if (postcodePrefix) return postcodePrefix;
+  if (postcodeFull) return postcodeFull;
   if (areaSlug) return titleCase(areaSlug);
   return "Not specified";
 }
@@ -123,7 +126,10 @@ export default async function WorkerProfilePage({
       description,
       category,
       country,
+      region,
       city,
+      postcode_prefix,
+      postcode_full,
       postcode,
       area_slug,
       hourly_rate,
@@ -155,7 +161,8 @@ export default async function WorkerProfilePage({
       country,
       region,
       city,
-      postcode,
+      postcode_prefix,
+      postcode_full,
       area_slug,
       phone_number,
       whatsapp_number,
@@ -239,16 +246,23 @@ export default async function WorkerProfilePage({
   });
 
   const displayCountry = profile?.country || workerProfile.country || "United Kingdom";
-  const displayRegion = profile?.region || null;
+  const displayRegion = profile?.region || workerProfile.region || null;
   const displayCity = profile?.city || workerProfile.city || null;
-  const displayPostcode = profile?.postcode || workerProfile.postcode || null;
+  const displayPostcodePrefix =
+    profile?.postcode_prefix || workerProfile.postcode_prefix || null;
+  const displayPostcodeFull =
+    profile?.postcode_full ||
+    workerProfile.postcode_full ||
+    workerProfile.postcode ||
+    null;
   const displayAreaSlug = profile?.area_slug || workerProfile.area_slug || null;
 
   const displayLocation = formatLocation({
     country: displayCountry,
     region: displayRegion,
     city: displayCity,
-    postcode: displayPostcode,
+    postcodePrefix: displayPostcodePrefix,
+    postcodeFull: displayPostcodeFull,
     areaSlug: displayAreaSlug,
   });
 
@@ -363,8 +377,15 @@ export default async function WorkerProfilePage({
                   <p className="mt-1 text-sm font-semibold text-slate-900">
                     {displayLocation}
                   </p>
-                  {displayPostcode ? (
-                    <p className="mt-1 text-xs text-slate-500">{displayPostcode}</p>
+                  {displayPostcodePrefix ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Prefix: {displayPostcodePrefix}
+                    </p>
+                  ) : null}
+                  {displayPostcodeFull ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Full postcode: {displayPostcodeFull}
+                    </p>
                   ) : null}
                 </div>
 
@@ -511,6 +532,12 @@ export default async function WorkerProfilePage({
                   workerUserId={workerProfile.user_id}
                   workerName={profile?.full_name || "Worker"}
                   areaSlug={displayAreaSlug || "united-kingdom"}
+                  country={displayCountry}
+                  region={displayRegion || undefined}
+                  city={displayCity || undefined}
+                  postcode={
+                    displayPostcodeFull || displayPostcodePrefix || undefined
+                  }
                   selectedMeetingAt={selectedSlot}
                 />
               </>
@@ -541,8 +568,16 @@ export default async function WorkerProfilePage({
                   {displayCity || "Not specified"}
                 </p>
                 <p>
-                  <span className="font-semibold text-slate-900">Postcode:</span>{" "}
-                  {displayPostcode || "Not specified"}
+                  <span className="font-semibold text-slate-900">
+                    Postcode prefix:
+                  </span>{" "}
+                  {displayPostcodePrefix || "Not specified"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">
+                    Full postcode:
+                  </span>{" "}
+                  {displayPostcodeFull || "Not specified"}
                 </p>
                 <p>
                   <span className="font-semibold text-slate-900">

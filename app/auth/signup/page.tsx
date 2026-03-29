@@ -1,60 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getRegions } from "@/lib/uk-locations";
 
 export default function SignupPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+
+  const regions = useMemo(() => getRegions(), []);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [region, setRegion] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function checkSession() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (!mounted) return;
-
-        if (user) {
-          router.replace("/dashboard");
-          return;
-        }
-
-        setCheckingSession(false);
-      } catch (error) {
-        console.error("signup session check error:", error);
-        if (mounted) {
-          setCheckingSession(false);
-        }
-      }
-    }
-
-    checkSession();
-
-    return () => {
-      mounted = false;
-    };
-  }, [router, supabase]);
 
   async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     const cleanFullName = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password;
+    const cleanPassword = password.trim();
+    const cleanRegion = region.trim();
 
     if (!cleanFullName) {
       setErrorMessage("Please enter your full name.");
@@ -66,8 +38,18 @@ export default function SignupPage() {
       return;
     }
 
+    if (!cleanPassword) {
+      setErrorMessage("Please enter a password.");
+      return;
+    }
+
     if (cleanPassword.length < 8) {
       setErrorMessage("Password must be at least 8 characters long.");
+      return;
+    }
+
+    if (!cleanRegion) {
+      setErrorMessage("Please select your UK nation.");
       return;
     }
 
@@ -76,16 +58,16 @@ export default function SignupPage() {
       setErrorMessage("");
       setSuccessMessage("");
 
-      const emailRedirectTo =
+      const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/auth/login`
-          : "http://localhost:3000/auth/login";
+          ? `${window.location.origin}/auth/update-password`
+          : undefined;
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password: cleanPassword,
         options: {
-          emailRedirectTo,
+          emailRedirectTo: redirectTo,
           data: {
             full_name: cleanFullName,
           },
@@ -97,13 +79,30 @@ export default function SignupPage() {
         return;
       }
 
-      setSuccessMessage(
-        "Account created. Check your email to confirm your account, then sign in."
-      );
+      const userId = data.user?.id;
 
-      setFullName("");
-      setEmail("");
-      setPassword("");
+      if (userId) {
+        const { error: profileError } = await supabase.from("profiles").upsert({
+          id: userId,
+          full_name: cleanFullName,
+          email: cleanEmail,
+          country: "United Kingdom",
+          region: cleanRegion,
+          city: null,
+          postcode_prefix: null,
+          postcode_full: null,
+          is_active: true,
+        });
+
+        if (profileError) {
+          setErrorMessage(profileError.message);
+          return;
+        }
+      }
+
+      setSuccessMessage(
+        "Account created successfully. Please check your email to verify your account."
+      );
 
       setTimeout(() => {
         router.push("/auth/login");
@@ -116,19 +115,6 @@ export default function SignupPage() {
     }
   }
 
-  if (checkingSession) {
-    return (
-      <main className="min-h-screen bg-slate-50">
-        <section className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-          <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <h1 className="text-2xl font-bold text-slate-900">Create account</h1>
-            <p className="mt-3 text-sm text-slate-600">Checking your session...</p>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
   return (
     <main className="min-h-screen bg-slate-50">
       <section className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -138,7 +124,7 @@ export default function SignupPage() {
             Join WorkConnect
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Create your account to hire workers, apply for jobs, and manage messages.
+            Create your account and choose the UK nation you mainly want to use the platform in.
           </p>
 
           <form onSubmit={handleSignup} className="mt-8 space-y-5">
@@ -161,7 +147,6 @@ export default function SignupPage() {
               <input
                 type="text"
                 required
-                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
@@ -176,7 +161,6 @@ export default function SignupPage() {
               <input
                 type="email"
                 required
-                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
@@ -191,15 +175,30 @@ export default function SignupPage() {
               <input
                 type="password"
                 required
-                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
                 placeholder="Create a password"
               />
-              <p className="mt-2 text-xs text-slate-500">
-                Use at least 8 characters.
-              </p>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                UK nation
+              </label>
+              <select
+                required
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+              >
+                <option value="">Select nation</option>
+                {regions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
@@ -210,13 +209,12 @@ export default function SignupPage() {
               {loading ? "Creating account..." : "Create account"}
             </button>
 
-            <div className="text-center text-sm text-slate-600">
-              Already have an account?{" "}
+            <div className="text-center">
               <Link
                 href="/auth/login"
-                className="font-semibold text-indigo-600 transition hover:text-indigo-700"
+                className="text-sm font-semibold text-slate-700 transition hover:text-slate-900"
               >
-                Sign in
+                Already have an account? Log in
               </Link>
             </div>
           </form>
@@ -225,4 +223,3 @@ export default function SignupPage() {
     </main>
   );
 }
-
