@@ -71,7 +71,9 @@ export default async function JobsPage() {
     return expiresAt.getTime() > Date.now();
   });
 
-  const hirerIds = [...new Set(safeJobs.map((job) => job.hirer_id).filter(Boolean))];
+  const hirerIds = [
+    ...new Set(safeJobs.map((job) => job.hirer_id).filter(Boolean)),
+  ];
 
   const { data: hirers } = hirerIds.length
     ? await supabase
@@ -124,7 +126,7 @@ export default async function JobsPage() {
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
             Browse jobs by category, nation, city, postcode prefix, budget, and
-            work type. Matching jobs can be highlighted using your worker profile.
+            work type.
           </p>
         </div>
 
