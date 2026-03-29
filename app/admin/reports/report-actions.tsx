@@ -11,7 +11,7 @@ export default function ReportActions({
   reportId: string;
   currentStatus: string;
 }) {
-  const supabase = await createClient();
+  const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 

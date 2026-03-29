@@ -32,7 +32,7 @@ const DAYS = [
 const SHIFT_OPTIONS = ["morning", "afternoon", "night"];
 
 export default function WorkerProfileEditPage() {
-  const supabase = await createClient();
+  const supabase = createClient();
   const router = useRouter();
   const { showToast } = useToast();
 

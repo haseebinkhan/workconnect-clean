@@ -13,7 +13,7 @@ export default function UserActions({
   userName: string;
   isActive: boolean;
 }) {
-  const supabase = await createClient();
+  const supabase = createClient();
   const router = useRouter();
 
   const [loadingToggle, setLoadingToggle] = useState(false);

@@ -11,7 +11,7 @@ export default function AdminUserAction({
   targetUserId: string;
   isActive: boolean;
 }) {
-  const supabase = await createClient();
+  const supabase = createClient();
 
   const handleDeleteUser = async () => {
     const confirmDelete = confirm("Delete this user?");

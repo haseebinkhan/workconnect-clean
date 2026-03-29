@@ -107,7 +107,7 @@ export default function ProfileForm({
   initialCountry: string;
   initialRegion: string;
 }) {
-  const supabase = await createClient();
+  const supabase = createClient();
   const router = useRouter();
 
   const [fullName, setFullName] = useState(initialFullName);

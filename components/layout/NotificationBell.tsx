@@ -95,7 +95,7 @@ function getNotificationIcon(type: string) {
 }
 
 export default function NotificationBell({ userId }: { userId: string }) {
-  const supabase = await createClient();
+  const supabase = createClient();
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   const [open, setOpen] = useState(false);

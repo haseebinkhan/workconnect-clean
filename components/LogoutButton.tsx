@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function LogoutButton() {
-  const supabase = await createClient();
+  const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
