@@ -34,7 +34,9 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(
+          cookiesToSet: { name: string; value: string; options?: any }[]
+        ) {
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
@@ -52,6 +54,7 @@ export async function middleware(request: NextRequest) {
   const loggedIn = !!user;
   const publicPath = isPublicPath(pathname);
 
+  // 🚫 Not logged in → redirect to login
   if (!loggedIn && !publicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
@@ -59,6 +62,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // 🔁 Already logged in → block login/signup pages
   if (loggedIn && (pathname === "/auth/login" || pathname === "/auth/signup")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
