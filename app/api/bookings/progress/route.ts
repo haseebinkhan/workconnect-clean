@@ -30,16 +30,53 @@ function normalizeAction(value: unknown): ProgressAction | null {
   return null;
 }
 
+function buildLocationText({
+  country,
+  region,
+  city,
+  postcode,
+  areaSlug,
+}: {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  areaSlug?: string | null;
+}) {
+  const parts = [city, region, country].filter(Boolean);
+  const base = parts.join(", ");
+  return base || postcode || areaSlug || "Location not specified";
+}
+
+async function insertSystemMessage(params: {
+  bookingId: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+}) {
+  const { error } = await adminSupabase.from("messages").insert({
+    booking_id: params.bookingId,
+    sender_id: params.senderId,
+    receiver_id: params.receiverId,
+    content: params.content,
+    is_read: false,
+    delivered: false,
+  });
+
+  if (error) {
+    console.error("booking progress system message error:", error);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
 
     const {
       data: { user },
-      error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -57,14 +94,23 @@ export async function POST(req: Request) {
 
     const { data: booking, error: bookingError } = await adminSupabase
       .from("bookings")
-      .select(`
+      .select(
+        `
         id,
         title,
         status,
+        country,
+        region,
+        city,
+        postcode,
+        area_slug,
+        budget_amount,
+        currency_code,
         hirer_user_id,
         worker_user_id,
         deleted_at
-      `)
+      `
+      )
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -79,10 +125,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
+    const now = new Date().toISOString();
+    const locationText = buildLocationText({
+      country: booking.country,
+      region: booking.region,
+      city: booking.city,
+      postcode: booking.postcode,
+      areaSlug: booking.area_slug,
+    });
+
+    const { data: hirerProfile } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", booking.hirer_user_id)
+      .maybeSingle();
+
+    const { data: workerProfile } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", booking.worker_user_id)
+      .maybeSingle();
+
     let nextStatus: string | null = null;
     let notifyUserId: string | null = null;
     let notificationTitle = "";
     let notificationBody = "";
+    let systemMessage = "";
 
     if (action === "start_work") {
       if (!isHirer) {
@@ -103,6 +171,10 @@ export async function POST(req: Request) {
       notifyUserId = booking.worker_user_id;
       notificationTitle = "Work started";
       notificationBody = `The booking "${booking.title}" has been marked as in progress.`;
+      systemMessage = [
+        `${hirerProfile?.full_name || "Hirer"} started work on "${booking.title || "this booking"}".`,
+        `Location: ${locationText}.`,
+      ].join(" ");
     }
 
     if (action === "mark_done") {
@@ -124,6 +196,10 @@ export async function POST(req: Request) {
       notifyUserId = booking.hirer_user_id;
       notificationTitle = "Worker marked job done";
       notificationBody = `The worker marked "${booking.title}" as done. Please review and complete it.`;
+      systemMessage = [
+        `${workerProfile?.full_name || "Worker"} marked "${booking.title || "this booking"}" as done.`,
+        `Location: ${locationText}.`,
+      ].join(" ");
     }
 
     if (action === "complete_work") {
@@ -145,6 +221,10 @@ export async function POST(req: Request) {
       notifyUserId = booking.worker_user_id;
       notificationTitle = "Booking completed";
       notificationBody = `The booking "${booking.title}" has been completed.`;
+      systemMessage = [
+        `${hirerProfile?.full_name || "Hirer"} completed "${booking.title || "this booking"}".`,
+        `Location: ${locationText}.`,
+      ].join(" ");
     }
 
     if (action === "cancel_request") {
@@ -166,6 +246,10 @@ export async function POST(req: Request) {
       notifyUserId = isWorker ? booking.hirer_user_id : booking.worker_user_id;
       notificationTitle = "Booking cancelled";
       notificationBody = `The booking "${booking.title}" has been cancelled.`;
+      systemMessage = [
+        `${isWorker ? workerProfile?.full_name || "Worker" : hirerProfile?.full_name || "Hirer"} cancelled "${booking.title || "this booking"}".`,
+        `Location: ${locationText}.`,
+      ].join(" ");
     }
 
     if (!nextStatus) {
@@ -178,7 +262,7 @@ export async function POST(req: Request) {
         status: nextStatus,
         seen_by_hirer: isHirer,
         seen_by_worker: isWorker,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("id", booking.id);
 
@@ -195,9 +279,20 @@ export async function POST(req: Request) {
         meta: {
           booking_id: booking.id,
           status: nextStatus,
+          title: booking.title,
+          location: locationText,
+          updated_by: user.id,
+          updated_at: now,
         },
       });
     }
+
+    await insertSystemMessage({
+      bookingId: booking.id,
+      senderId: user.id,
+      receiverId: notifyUserId || (isWorker ? booking.hirer_user_id : booking.worker_user_id),
+      content: systemMessage,
+    });
 
     return NextResponse.json({
       success: true,
@@ -209,4 +304,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
-

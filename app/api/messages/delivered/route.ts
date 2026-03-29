@@ -7,6 +7,10 @@ const adminSupabase = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -21,8 +25,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const bookingId =
-      typeof body?.bookingId === "string" ? body.bookingId.trim() : "";
+    const bookingId = normalizeText(body?.bookingId);
 
     if (!bookingId) {
       return NextResponse.json({ error: "Missing bookingId" }, { status: 400 });
@@ -52,6 +55,7 @@ export async function POST(req: Request) {
       .from("messages")
       .update({ delivered: true })
       .eq("booking_id", bookingId)
+      .eq("receiver_id", user.id)
       .neq("sender_id", user.id)
       .or("delivered.is.null,delivered.eq.false");
 
@@ -65,4 +69,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
-

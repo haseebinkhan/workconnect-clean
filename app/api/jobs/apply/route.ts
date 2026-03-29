@@ -22,18 +22,17 @@ function normalizeDate(value: string) {
 
 export async function POST(req: Request) {
   try {
+    await autoCloseExpiredJobs();
+
     const supabase = await createClient();
 
     const {
       data: { user },
-      error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    await autoCloseExpiredJobs();
 
     const formData = await req.formData();
 
@@ -58,7 +57,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const proposedRate = proposedRateRaw === "" ? null : Number(proposedRateRaw);
+    const proposedRate =
+      proposedRateRaw === "" ? null : Number(proposedRateRaw);
 
     if (proposedRateRaw !== "" && Number.isNaN(proposedRate)) {
       return NextResponse.json(
@@ -76,9 +76,41 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: workerUserProfile, error: workerUserProfileError } =
+      await adminSupabase
+        .from("profiles")
+        .select(
+          "id, full_name, email, worker_enabled, is_active, country, region, city, postcode_prefix, postcode_full"
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (workerUserProfileError || !workerUserProfile) {
+      return NextResponse.json(
+        { error: "Your profile was not found." },
+        { status: 404 }
+      );
+    }
+
+    if (!workerUserProfile.is_active) {
+      return NextResponse.json(
+        { error: "Your account is not active." },
+        { status: 403 }
+      );
+    }
+
+    if (!workerUserProfile.worker_enabled) {
+      return NextResponse.json(
+        { error: "Enable worker mode before applying for jobs." },
+        { status: 403 }
+      );
+    }
+
     const { data: workerProfile, error: workerProfileError } = await adminSupabase
       .from("worker_profiles")
-      .select("id, user_id, is_open_to_work")
+      .select(
+        "id, user_id, is_open_to_work, is_public, country, region, city, postcode, postcode_prefix, postcode_full, area_slug, category"
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -101,7 +133,26 @@ export async function POST(req: Request) {
 
     const { data: job, error: jobError } = await adminSupabase
       .from("jobs")
-      .select("id, hirer_id, title, status, visibility, deleted_at")
+      .select(
+        `
+        id,
+        hirer_id,
+        title,
+        status,
+        visibility,
+        deleted_at,
+        country,
+        region,
+        city,
+        postcode_prefix,
+        postcode_full,
+        area_slug,
+        currency_code,
+        budget_min,
+        budget_max,
+        expires_at
+      `
+      )
       .eq("id", jobId)
       .maybeSingle();
 
@@ -123,9 +174,19 @@ export async function POST(req: Request) {
       );
     }
 
+    if (job.expires_at) {
+      const expiresAt = new Date(job.expires_at);
+      if (!Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() <= Date.now()) {
+        return NextResponse.json(
+          { error: "This job has expired." },
+          { status: 400 }
+        );
+      }
+    }
+
     const { data: hirerProfile, error: hirerProfileError } = await adminSupabase
       .from("hirer_profiles")
-      .select("id, user_id")
+      .select("id, user_id, company_name, contact_name, location, industry")
       .eq("id", job.hirer_id)
       .maybeSingle();
 
@@ -182,7 +243,8 @@ export async function POST(req: Request) {
       }
 
       const fileExt = cvFile.name.split(".").pop() || "file";
-      const filePath = `cv/${user.id}-${Date.now()}.${fileExt}`;
+      const safeName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `cv/${safeName}`;
 
       const { error: uploadError } = await adminSupabase.storage
         .from("cvs")
@@ -232,6 +294,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const workerLocation =
+      [workerProfile.city, workerProfile.region, workerProfile.country]
+        .filter(Boolean)
+        .join(", ") ||
+      workerProfile.postcode_full ||
+      workerProfile.postcode_prefix ||
+      workerProfile.postcode ||
+      "Worker location not specified";
+
+    const jobLocation =
+      [job.city, job.region, job.country].filter(Boolean).join(", ") ||
+      job.postcode_full ||
+      job.postcode_prefix ||
+      job.area_slug ||
+      "Job location not specified";
+
     await adminSupabase.from("notifications").insert({
       user_id: hirerProfile.user_id,
       type: "job_application",
@@ -241,6 +319,14 @@ export async function POST(req: Request) {
         job_id: job.id,
         application_id: insertedApplication.id,
         worker_user_id: user.id,
+        worker_profile_id: workerProfile.id,
+        worker_name: workerUserProfile.full_name || "Worker",
+        worker_category: workerProfile.category || null,
+        worker_location: workerLocation,
+        job_location: jobLocation,
+        proposed_rate: proposedRate,
+        currency_code: job.currency_code || "GBP",
+        start_date: startDate,
       },
     });
 
@@ -260,4 +346,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

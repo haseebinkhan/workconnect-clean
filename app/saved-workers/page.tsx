@@ -1,21 +1,54 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import SaveWorkerButton from "@/components/workers/SaveWorkerButton";
-import { getAreaLabel } from "@/lib/ni-locations";
 
-function formatRate(
-  hourlyRate: number | null,
-  hourlyRateMin: number | null,
-  hourlyRateMax: number | null
-) {
+function formatLocation({
+  country,
+  region,
+  city,
+  postcodePrefix,
+  postcodeFull,
+  areaSlug,
+}: {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcodePrefix?: string | null;
+  postcodeFull?: string | null;
+  areaSlug?: string | null;
+}) {
+  const parts = [city, region, country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (postcodePrefix) return postcodePrefix;
+  if (postcodeFull) return postcodeFull;
+  if (areaSlug) return areaSlug;
+  return "Location not specified";
+}
+
+function formatRate({
+  hourlyRate,
+  hourlyRateMin,
+  hourlyRateMax,
+}: {
+  hourlyRate?: number | null;
+  hourlyRateMin?: number | null;
+  hourlyRateMax?: number | null;
+}) {
   if (hourlyRate != null) return `GBP ${hourlyRate}/hr`;
   if (hourlyRateMin != null || hourlyRateMax != null) {
-    return `GBP ${hourlyRateMin ?? 0}${
-      hourlyRateMax != null ? ` - ${hourlyRateMax}` : ""
-    }/hr`;
+    return `GBP ${hourlyRateMin ?? 0}${hourlyRateMax != null ? ` - ${hourlyRateMax}` : ""}/hr`;
   }
   return "Rate not specified";
+}
+
+function initials(name?: string | null) {
+  const text = (name || "W").trim();
+  return text
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
 }
 
 export default async function SavedWorkersPage() {
@@ -29,7 +62,7 @@ export default async function SavedWorkersPage() {
     redirect("/auth/login");
   }
 
-  const { data: favorites, error } = await supabase
+  const { data: savedRows, error } = await supabase
     .from("favorites")
     .select(`
       id,
@@ -54,7 +87,7 @@ export default async function SavedWorkersPage() {
     );
   }
 
-  const workerUserIds = [...new Set((favorites || []).map((f) => f.worker_user_id))];
+  const workerUserIds = [...new Set((savedRows || []).map((item) => item.worker_user_id).filter(Boolean))];
 
   const { data: profiles } = workerUserIds.length
     ? await supabase
@@ -63,9 +96,11 @@ export default async function SavedWorkersPage() {
           id,
           full_name,
           avatar_url,
+          country,
+          region,
           city,
-          area_slug,
-          is_active
+          postcode_prefix,
+          postcode_full
         `)
         .in("id", workerUserIds)
     : { data: [] };
@@ -79,13 +114,22 @@ export default async function SavedWorkersPage() {
           headline,
           description,
           category,
+          country,
+          region,
+          city,
+          area_slug,
+          postcode,
+          postcode_prefix,
+          postcode_full,
           hourly_rate,
           hourly_rate_min,
           hourly_rate_max,
           rating_avg,
           rating_count,
           jobs_completed,
-          is_open_to_work
+          is_open_to_work,
+          is_public,
+          availability_notes
         `)
         .in("user_id", workerUserIds)
     : { data: [] };
@@ -93,73 +137,64 @@ export default async function SavedWorkersPage() {
   const profileMap = new Map((profiles || []).map((item) => [item.id, item]));
   const workerProfileMap = new Map((workerProfiles || []).map((item) => [item.user_id, item]));
 
-  const rows = (favorites || [])
-    .map((favorite) => {
-      const profile = profileMap.get(favorite.worker_user_id);
-      const workerProfile = workerProfileMap.get(favorite.worker_user_id);
+  const savedWorkers = (savedRows || [])
+    .map((saved) => {
+      const profile = profileMap.get(saved.worker_user_id);
+      const worker = workerProfileMap.get(saved.worker_user_id);
 
-      if (!profile || !workerProfile || !profile.is_active) return null;
+      if (!profile || !worker) return null;
 
       return {
-        favoriteId: favorite.id,
-        savedAt: favorite.created_at,
-        workerUserId: favorite.worker_user_id,
-        workerProfileId: workerProfile.id,
+        savedId: saved.id,
+        savedAt: saved.created_at,
+        workerProfileId: worker.id,
+        workerUserId: saved.worker_user_id,
         fullName: profile.full_name || "Worker",
-        avatarUrl: profile.avatar_url,
-        city: profile.city,
-        areaSlug: profile.area_slug,
-        headline: workerProfile.headline,
-        description: workerProfile.description,
-        category: workerProfile.category,
-        hourlyRate: workerProfile.hourly_rate,
-        hourlyRateMin: workerProfile.hourly_rate_min,
-        hourlyRateMax: workerProfile.hourly_rate_max,
-        ratingAvg: workerProfile.rating_avg,
-        ratingCount: workerProfile.rating_count,
-        jobsCompleted: workerProfile.jobs_completed,
-        isOpenToWork: workerProfile.is_open_to_work,
+        avatarUrl: profile.avatar_url || null,
+        headline: worker.headline || null,
+        description: worker.description || null,
+        category: worker.category || null,
+        country: worker.country || profile.country || "United Kingdom",
+        region: worker.region || profile.region || null,
+        city: worker.city || profile.city || null,
+        areaSlug: worker.area_slug || null,
+        postcodePrefix: worker.postcode_prefix || profile.postcode_prefix || null,
+        postcodeFull:
+          worker.postcode_full ||
+          worker.postcode ||
+          profile.postcode_full ||
+          null,
+        hourlyRate: worker.hourly_rate ?? null,
+        hourlyRateMin: worker.hourly_rate_min ?? null,
+        hourlyRateMax: worker.hourly_rate_max ?? null,
+        ratingAvg: worker.rating_avg ?? null,
+        ratingCount: worker.rating_count ?? null,
+        jobsCompleted: worker.jobs_completed ?? null,
+        isOpenToWork: !!worker.is_open_to_work,
+        isPublic: !!worker.is_public,
+        availabilityNotes: worker.availability_notes || null,
       };
     })
-    .filter(Boolean) as Array<{
-      favoriteId: string;
-      savedAt: string;
-      workerUserId: string;
-      workerProfileId: string;
-      fullName: string;
-      avatarUrl: string | null;
-      city: string | null;
-      areaSlug: string | null;
-      headline: string | null;
-      description: string | null;
-      category: string | null;
-      hourlyRate: number | null;
-      hourlyRateMin: number | null;
-      hourlyRateMax: number | null;
-      ratingAvg: number | null;
-      ratingCount: number | null;
-      jobsCompleted: number | null;
-      isOpenToWork: boolean;
-    }>;
+    .filter(Boolean);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-7xl">
-        <div className="mb-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <p className="text-sm font-medium text-slate-500">Hirer shortlist</p>
+        <div className="mb-8">
+          <p className="text-sm font-medium text-slate-500">Saved shortlist</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
             Saved workers
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-            Save promising workers while you compare profiles, availability, and rates.
+          <p className="mt-3 text-sm leading-7 text-slate-600">
+            Keep a shortlist of workers you may want to contact later.
           </p>
         </div>
 
-        {rows.length === 0 ? (
+        {savedWorkers.length === 0 ? (
           <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900">No saved workers yet</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Browse workers and save the ones you may want to contact later.
+              Browse workers and save the ones you want to review later.
             </p>
             <div className="mt-6">
               <Link
@@ -172,120 +207,132 @@ export default async function SavedWorkersPage() {
           </div>
         ) : (
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {rows.map((worker) => (
-              <article
-                key={worker.favoriteId}
-                className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-indigo-100 text-lg font-bold text-indigo-700">
-                    {worker.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={worker.avatarUrl}
-                        alt={worker.fullName}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      worker.fullName
-                        .split(" ")
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .map((part) => part[0]?.toUpperCase() || "")
-                        .join("")
-                    )}
-                  </div>
+            {savedWorkers.map((worker: any) => {
+              const locationText = formatLocation({
+                country: worker.country,
+                region: worker.region,
+                city: worker.city,
+                postcodePrefix: worker.postcodePrefix,
+                postcodeFull: worker.postcodeFull,
+                areaSlug: worker.areaSlug,
+              });
 
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-lg font-bold text-slate-900">
-                      {worker.fullName}
-                    </h3>
-                    <p className="mt-1 text-sm font-medium text-slate-600">
-                      {worker.headline || worker.category || "Worker profile"}
-                    </p>
+              return (
+                <article
+                  key={worker.savedId}
+                  className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-indigo-100 text-lg font-bold text-indigo-700">
+                      {worker.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={worker.avatarUrl}
+                          alt={worker.fullName}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        initials(worker.fullName)
+                      )}
+                    </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {worker.category ? (
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                          {worker.category}
+                    <div className="min-w-0 flex-1">
+                      <h2 className="truncate text-lg font-bold text-slate-900">
+                        {worker.fullName}
+                      </h2>
+                      <p className="mt-1 text-sm font-medium text-slate-600">
+                        {worker.headline || worker.category || "Worker profile"}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {worker.category ? (
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {worker.category}
+                          </span>
+                        ) : null}
+
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            worker.isOpenToWork
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {worker.isOpenToWork ? "Open to work" : "Unavailable"}
                         </span>
-                      ) : null}
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          worker.isOpenToWork
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-slate-100 text-slate-700"
-                        }`}
-                      >
-                        {worker.isOpenToWork ? "Open to work" : "Unavailable"}
-                      </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Area
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {getAreaLabel(worker.areaSlug)}
-                    </p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Location
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {locationText}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Rate
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {formatRate({
+                          hourlyRate: worker.hourlyRate,
+                          hourlyRateMin: worker.hourlyRateMin,
+                          hourlyRateMax: worker.hourlyRateMax,
+                        })}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Rating
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {worker.ratingAvg != null
+                          ? `${Number(worker.ratingAvg).toFixed(1)} (${worker.ratingCount ?? 0})`
+                          : "No rating yet"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Jobs completed
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {worker.jobsCompleted ?? 0}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Rate
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatRate(worker.hourlyRate, worker.hourlyRateMin, worker.hourlyRateMax)}
-                    </p>
+                  <p className="mt-5 line-clamp-3 text-sm leading-7 text-slate-600">
+                    {worker.description || worker.availabilityNotes || "No description added yet."}
+                  </p>
+
+                  <div className="mt-6 flex gap-3">
+                    <Link
+                      href={`/workers/${worker.workerProfileId}`}
+                      className="flex-1 rounded-2xl bg-indigo-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-indigo-700"
+                    >
+                      View worker
+                    </Link>
+
+                    <Link
+                      href={`/workers/${worker.workerProfileId}`}
+                      className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                    >
+                      Contact
+                    </Link>
                   </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Rating
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {worker.ratingAvg != null
-                        ? `${Number(worker.ratingAvg).toFixed(1)} (${worker.ratingCount ?? 0})`
-                        : "No rating yet"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Jobs completed
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {worker.jobsCompleted ?? 0}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-5 line-clamp-3 text-sm leading-7 text-slate-600">
-                  {worker.description || "No description added yet."}
-                </p>
-
-                <div className="mt-6 flex gap-3">
-                  <Link
-                    href={`/workers/${worker.workerProfileId}`}
-                    className="flex-1 rounded-2xl bg-indigo-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-indigo-700"
-                  >
-                    View profile
-                  </Link>
-
-                  <SaveWorkerButton
-                    workerUserId={worker.workerUserId}
-                    initiallySaved={true}
-                  />
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
     </main>
   );
 }
-

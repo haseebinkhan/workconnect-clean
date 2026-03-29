@@ -30,6 +30,12 @@ function safeIsoDate(value: string) {
   return date.toISOString();
 }
 
+function isValidUKFullPostcode(value: string) {
+  const text = value.trim().toUpperCase();
+  if (!text) return true;
+  return /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/.test(text);
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -54,7 +60,15 @@ export async function POST(req: Request) {
     const country = normalizeText(body?.country) || "United Kingdom";
     const region = normalizeOptionalText(body?.region);
     const city = normalizeOptionalText(body?.city);
-    const postcode = normalizeUpperText(body?.postcode) || null;
+
+    const postcodeRaw = normalizeUpperText(body?.postcode);
+    const postcode = postcodeRaw || null;
+
+    const postcodePrefixRaw = normalizeUpperText(body?.postcodePrefix);
+    const postcodePrefix = postcodePrefixRaw || null;
+
+    const postcodeFullRaw = normalizeUpperText(body?.postcodeFull);
+    const postcodeFull = postcodeFullRaw || null;
 
     const preferredMeetingAtRaw = normalizeText(body?.preferredMeetingAt);
     const preferredMeetingAt = preferredMeetingAtRaw
@@ -80,6 +94,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (postcodeFull && !isValidUKFullPostcode(postcodeFull)) {
+      return NextResponse.json(
+        { error: "Full postcode is not valid." },
+        { status: 400 }
+      );
+    }
+
     if (user.id === workerUserId) {
       return NextResponse.json(
         { error: "You cannot create a request with yourself." },
@@ -89,7 +110,9 @@ export async function POST(req: Request) {
 
     const { data: hirerProfile, error: hirerProfileError } = await adminSupabase
       .from("profiles")
-      .select("id, full_name, email, worker_enabled, hirer_enabled, is_active")
+      .select(
+        "id, full_name, email, worker_enabled, hirer_enabled, is_active, country, region, city, postcode_prefix, postcode_full"
+      )
       .eq("id", user.id)
       .maybeSingle();
 
@@ -119,7 +142,9 @@ export async function POST(req: Request) {
     const { data: workerUserProfile, error: workerUserProfileError } =
       await adminSupabase
         .from("profiles")
-        .select("id, full_name, email, worker_enabled, is_active")
+        .select(
+          "id, full_name, email, worker_enabled, is_active, country, region, city, postcode_prefix, postcode_full"
+        )
         .eq("id", workerUserId)
         .maybeSingle();
 
@@ -139,7 +164,9 @@ export async function POST(req: Request) {
 
     const { data: workerProfile, error: workerProfileError } = await adminSupabase
       .from("worker_profiles")
-      .select("id, user_id, is_open_to_work, country, city, postcode, area_slug")
+      .select(
+        "id, user_id, is_open_to_work, country, region, city, postcode, postcode_prefix, postcode_full, area_slug"
+      )
       .eq("id", workerProfileId)
       .eq("user_id", workerUserId)
       .maybeSingle();
@@ -183,32 +210,69 @@ export async function POST(req: Request) {
     const meetingText = new Date(preferredMeetingAt).toLocaleString("en-GB");
     const now = new Date().toISOString();
 
-    const bookingCountry = country || workerProfile.country || "United Kingdom";
-    const bookingCity = city || workerProfile.city || null;
-    const bookingPostcode = postcode || workerProfile.postcode || null;
+    const bookingCountry =
+      country ||
+      workerProfile.country ||
+      workerUserProfile.country ||
+      "United Kingdom";
+
+    const bookingRegion =
+      region ||
+      workerProfile.region ||
+      workerUserProfile.region ||
+      hirerProfile.region ||
+      null;
+
+    const bookingCity =
+      city ||
+      workerProfile.city ||
+      workerUserProfile.city ||
+      hirerProfile.city ||
+      null;
+
+    const bookingPostcodeFull =
+      postcodeFull ||
+      postcode ||
+      workerProfile.postcode_full ||
+      workerProfile.postcode ||
+      workerUserProfile.postcode_full ||
+      hirerProfile.postcode_full ||
+      null;
+
+    const bookingPostcodePrefix =
+      postcodePrefix ||
+      workerProfile.postcode_prefix ||
+      workerUserProfile.postcode_prefix ||
+      hirerProfile.postcode_prefix ||
+      null;
+
     const bookingAreaSlug =
-      areaSlug || workerProfile.area_slug || "united-kingdom";
+      areaSlug ||
+      workerProfile.area_slug ||
+      "united-kingdom";
+
+    const insertPayload: Record<string, unknown> = {
+      hirer_user_id: user.id,
+      worker_user_id: workerUserId,
+      worker_profile_id: workerProfile.id,
+      title,
+      message,
+      budget_amount: budgetAmount,
+      currency_code: "GBP",
+      area_slug: bookingAreaSlug,
+      country: bookingCountry,
+      region: bookingRegion,
+      city: bookingCity,
+      postcode: bookingPostcodeFull,
+      status: "pending",
+      seen_by_hirer: true,
+      seen_by_worker: false,
+      preferred_meeting_at: preferredMeetingAt,
+    };
 
     const { data: booking, error: bookingError } = await adminSupabase
       .from("bookings")
-      .insert({
-        hirer_user_id: user.id,
-        worker_user_id: workerUserId,
-        worker_profile_id: workerProfile.id,
-        title,
-        message,
-        budget_amount: budgetAmount,
-        currency_code: "GBP",
-        area_slug: bookingAreaSlug,
-        country: bookingCountry,
-        region,
-        city: bookingCity,
-        postcode: bookingPostcode,
-        status: "pending",
-        seen_by_hirer: true,
-        seen_by_worker: false,
-        preferred_meeting_at: preferredMeetingAt,
-      })
+      .insert(insertPayload)
       .select("id, title, status")
       .single();
 
@@ -245,9 +309,10 @@ export async function POST(req: Request) {
           hirer_user_id: user.id,
           preferred_meeting_at: preferredMeetingAt,
           country: bookingCountry,
-          region,
+          region: bookingRegion,
           city: bookingCity,
-          postcode: bookingPostcode,
+          postcode_prefix: bookingPostcodePrefix,
+          postcode_full: bookingPostcodeFull,
           area_slug: bookingAreaSlug,
           created_at: now,
         },
@@ -262,9 +327,10 @@ export async function POST(req: Request) {
           worker_user_id: workerUserId,
           preferred_meeting_at: preferredMeetingAt,
           country: bookingCountry,
-          region,
+          region: bookingRegion,
           city: bookingCity,
-          postcode: bookingPostcode,
+          postcode_prefix: bookingPostcodePrefix,
+          postcode_full: bookingPostcodeFull,
           area_slug: bookingAreaSlug,
           created_at: now,
         },
@@ -299,4 +365,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

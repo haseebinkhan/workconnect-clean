@@ -7,56 +7,67 @@ const adminSupabase = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json();
 
-    const bookingId =
-      typeof body?.bookingId === "string" ? body.bookingId.trim() : "";
-    const content =
-      typeof body?.content === "string" ? body.content.trim() : "";
+    const bookingId = normalizeText(body?.bookingId);
+    const content = normalizeText(body?.content);
 
-    if (!bookingId || !content) {
-      return NextResponse.json(
-        { error: "Missing bookingId or content" },
-        { status: 400 }
-      );
+    if (!bookingId) {
+      return NextResponse.json({ error: "Missing bookingId." }, { status: 400 });
+    }
+
+    if (!content) {
+      return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
     }
 
     const { data: booking, error: bookingError } = await adminSupabase
       .from("bookings")
-      .select("id, hirer_user_id, worker_user_id, deleted_at")
+      .select(`
+        id,
+        title,
+        status,
+        hirer_user_id,
+        worker_user_id,
+        deleted_at
+      `)
       .eq("id", bookingId)
       .maybeSingle();
 
     if (bookingError || !booking || booking.deleted_at) {
-      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
     }
 
-    const isParticipant =
-      booking.hirer_user_id === user.id || booking.worker_user_id === user.id;
+    const isHirer = booking.hirer_user_id === user.id;
+    const isWorker = booking.worker_user_id === user.id;
 
-    if (!isParticipant) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!isHirer && !isWorker) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
-    const receiverId =
-      booking.hirer_user_id === user.id ? booking.worker_user_id : booking.hirer_user_id;
+    const receiverId = isHirer ? booking.worker_user_id : booking.hirer_user_id;
+    const now = new Date().toISOString();
 
     const { data: insertedMessage, error: insertError } = await adminSupabase
       .from("messages")
       .insert({
-        booking_id: bookingId,
+        booking_id: booking.id,
         sender_id: user.id,
         receiver_id: receiverId,
         content,
@@ -69,30 +80,61 @@ export async function POST(req: Request) {
         sender_id,
         receiver_id,
         content,
+        created_at,
         is_read,
-        delivered,
-        created_at
+        delivered
       `)
       .single();
 
     if (insertError || !insertedMessage) {
       return NextResponse.json(
-        { error: insertError?.message || "Could not send message" },
+        { error: insertError?.message || "Could not send message." },
         { status: 400 }
       );
     }
 
-    await adminSupabase.from("notifications").insert({
-      user_id: receiverId,
-      type: "new_message",
-      title: "New message",
-      body: content.length > 120 ? `${content.slice(0, 120)}...` : content,
-      meta: {
-        booking_id: bookingId,
-        sender_id: user.id,
-        message_id: insertedMessage.id,
-      },
-    });
+    const { error: bookingUpdateError } = await adminSupabase
+      .from("bookings")
+      .update({
+        seen_by_hirer: isHirer,
+        seen_by_worker: isWorker,
+        updated_at: now,
+      })
+      .eq("id", booking.id);
+
+    if (bookingUpdateError) {
+      console.error("messages/send booking update error:", bookingUpdateError);
+    }
+
+    const { data: senderProfile } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const preview =
+      content.length > 120 ? `${content.slice(0, 120).trim()}…` : content;
+
+    const { error: notificationError } = await adminSupabase
+      .from("notifications")
+      .insert({
+        user_id: receiverId,
+        type: "new_message",
+        title: booking.title ? `New message about "${booking.title}"` : "New message",
+        body: preview,
+        meta: {
+          booking_id: booking.id,
+          message_id: insertedMessage.id,
+          sender_id: user.id,
+          sender_name: senderProfile?.full_name || "User",
+          booking_status: booking.status,
+          created_at: now,
+        },
+      });
+
+    if (notificationError) {
+      console.error("messages/send notification error:", notificationError);
+    }
 
     return NextResponse.json({
       success: true,
@@ -103,4 +145,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
-

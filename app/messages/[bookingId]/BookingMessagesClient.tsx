@@ -2,270 +2,281 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import DeleteChatButton from "@/components/messages/DeleteChatButton";
-import { formatDateTime } from "@/lib/date-utils";
 
-type Message = {
-  id: string;
-  booking_id: string;
-  sender_id: string;
-  receiver_id?: string | null;
-  content: string;
-  is_read: boolean;
-  delivered?: boolean | null;
-  created_at: string;
-};
-
-type BookingResponse = {
-  booking?: {
+type BookingMessagesClientProps = {
+  bookingId: string;
+  currentUserId: string;
+  initialBooking: {
     id: string;
+    title: string | null;
+    message: string | null;
+    status: string | null;
+    budget_amount: number | null;
+    currency_code: string | null;
+    country: string | null;
+    region: string | null;
+    city: string | null;
+    postcode: string | null;
+    area_slug: string | null;
+    preferred_meeting_at: string | null;
     hirer_user_id: string;
     worker_user_id: string;
-    other_user_name?: string | null;
-    title?: string | null;
-    status?: string | null;
-    preferred_meeting_at?: string | null;
-    budget_amount?: number | null;
-    currency_code?: string | null;
-    country?: string | null;
-    region?: string | null;
-    city?: string | null;
-    postcode?: string | null;
-    area_slug?: string | null;
+    created_at: string | null;
   };
-  messages?: Message[];
-  error?: string;
+  initialMessages: Array<{
+    id: string;
+    booking_id: string;
+    sender_id?: string | null;
+    sender_user_id?: string | null;
+    receiver_id?: string | null;
+    receiver_user_id?: string | null;
+    content: string | null;
+    created_at: string | null;
+    is_read?: boolean | null;
+    delivered?: boolean | null;
+    message_type?: string | null;
+  }>;
+  initialParticipants?: {
+    hirer?: {
+      id: string;
+      full_name: string | null;
+      email?: string | null;
+    } | null;
+    worker?: {
+      id: string;
+      full_name: string | null;
+      email?: string | null;
+    } | null;
+  };
 };
 
-type TypingRow = {
+type ThreadMessage = {
+  id: string;
   booking_id: string;
-  user_id: string;
-  is_typing: boolean;
+  sender_id: string | null;
+  receiver_id: string | null;
+  content: string;
+  created_at: string | null;
+  is_read: boolean;
+  delivered: boolean;
+  message_type: string | null;
 };
 
-function formatTime(value: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], {
+function formatDateTime(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function formatBudget(amount?: number | null, currencyCode?: string | null) {
-  if (amount == null) return "Not specified";
-  return `${currencyCode || "GBP"} ${amount}`;
-}
-
-function formatLocation(input: {
-  city?: string | null;
-  region?: string | null;
-  country?: string | null;
-  postcode?: string | null;
-  area_slug?: string | null;
-}) {
-  const parts = [input.city, input.region, input.country].filter(Boolean);
-  if (parts.length > 0) return parts.join(", ");
-  if (input.postcode) return input.postcode;
-  if (input.area_slug) return input.area_slug;
-  return "Location not specified";
-}
-
-function MessageStatus({
-  isMine,
-  delivered,
-  isRead,
+function formatLocation({
+  country,
+  region,
+  city,
+  postcode,
+  areaSlug,
 }: {
-  isMine: boolean;
-  delivered?: boolean | null;
-  isRead: boolean;
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  areaSlug?: string | null;
 }) {
-  if (!isMine) return null;
-  if (isRead) return <span>Read</span>;
-  if (delivered) return <span>Delivered</span>;
-  return <span>Sent</span>;
+  const parts = [city, region, country].filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  if (postcode) return postcode;
+  if (areaSlug) return areaSlug;
+  return "Not specified";
 }
 
-function statusBadgeClasses(status?: string | null) {
+function statusClasses(status?: string | null) {
   switch ((status || "").toLowerCase()) {
     case "accepted":
-      return "bg-emerald-50 text-emerald-700";
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "cancelled":
-      return "bg-rose-50 text-rose-700";
+      return "bg-rose-50 text-rose-700 border-rose-200";
     case "in_progress":
-      return "bg-indigo-50 text-indigo-700";
-    case "completed":
-      return "bg-slate-100 text-slate-700";
+      return "bg-indigo-50 text-indigo-700 border-indigo-200";
     case "worker_marked_done":
-      return "bg-violet-50 text-violet-700";
+      return "bg-amber-50 text-amber-700 border-amber-200";
+    case "completed":
+      return "bg-slate-100 text-slate-700 border-slate-200";
     default:
-      return "bg-amber-50 text-amber-700";
+      return "bg-amber-50 text-amber-700 border-amber-200";
   }
+}
+
+function normalizeMessage(item: any): ThreadMessage {
+  return {
+    id: item.id,
+    booking_id: item.booking_id,
+    sender_id: item.sender_id ?? item.sender_user_id ?? null,
+    receiver_id: item.receiver_id ?? item.receiver_user_id ?? null,
+    content: item.content ?? "",
+    created_at: item.created_at ?? null,
+    is_read: Boolean(item.is_read),
+    delivered: Boolean(item.delivered),
+    message_type: item.message_type ?? null,
+  };
 }
 
 export default function BookingMessagesClient({
   bookingId,
-}: {
-  bookingId: string;
-}) {
+  currentUserId,
+  initialBooking,
+  initialMessages,
+  initialParticipants,
+}: BookingMessagesClientProps) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [messageText, setMessageText] = useState("");
-  const [currentUserId, setCurrentUserId] = useState("");
-  const [otherUserName, setOtherUserName] = useState("Recipient");
-  const [bookingTitle, setBookingTitle] = useState("Conversation");
-  const [bookingStatus, setBookingStatus] = useState("pending");
-  const [preferredMeetingAt, setPreferredMeetingAt] = useState<string | null>(
-    null
+  const [booking, setBooking] = useState(initialBooking);
+  const [messages, setMessages] = useState<ThreadMessage[]>(
+    (initialMessages || []).map(normalizeMessage)
   );
-  const [budgetAmount, setBudgetAmount] = useState<number | null>(null);
-  const [currencyCode, setCurrencyCode] = useState<string>("GBP");
-  const [bookingCountry, setBookingCountry] = useState<string | null>(null);
-  const [bookingRegion, setBookingRegion] = useState<string | null>(null);
-  const [bookingCity, setBookingCity] = useState<string | null>(null);
-  const [bookingPostcode, setBookingPostcode] = useState<string | null>(null);
-  const [bookingAreaSlug, setBookingAreaSlug] = useState<string | null>(null);
-  const [otherTyping, setOtherTyping] = useState(false);
+  const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [isMeTyping, setIsMeTyping] = useState(false);
+  const [participants, setParticipants] = useState(initialParticipants || {});
 
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isWorker = booking.worker_user_id === currentUserId;
+  const isHirer = booking.hirer_user_id === currentUserId;
 
-  const sortedMessages = useMemo(() => {
-    return [...messages].sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    );
+  const otherPerson = isWorker ? participants.hirer : participants.worker;
+
+  const requestLocation = useMemo(
+    () =>
+      formatLocation({
+        country: booking.country,
+        region: booking.region,
+        city: booking.city,
+        postcode: booking.postcode,
+        areaSlug: booking.area_slug,
+      }),
+    [booking.country, booking.region, booking.city, booking.postcode, booking.area_slug]
+  );
+
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const bookingLocation = useMemo(() => {
-    return formatLocation({
-      city: bookingCity,
-      region: bookingRegion,
-      country: bookingCountry,
-      postcode: bookingPostcode,
-      area_slug: bookingAreaSlug,
-    });
-  }, [bookingCity, bookingRegion, bookingCountry, bookingPostcode, bookingAreaSlug]);
+  useEffect(() => {
+    markDelivered();
+    markRead();
 
-  async function loadChat() {
+    const interval = setInterval(() => {
+      refreshThread();
+    }, 7000);
+
+    return () => clearInterval(interval);
+  }, [bookingId]);
+
+  async function refreshThread() {
     try {
-      setLoading(true);
-      setErrorMessage("");
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user?.id) {
-        setErrorMessage("Please log in again.");
-        return;
-      }
-
-      const myId = user.id;
-      setCurrentUserId(myId);
-
-      const chatRes = await fetch(`/api/messages/get?bookingId=${bookingId}`, {
-        cache: "no-store",
-      });
-
-      const chatRaw = await chatRes.text();
-      const chatData: BookingResponse = chatRaw ? JSON.parse(chatRaw) : {};
-
-      if (!chatRes.ok) {
-        setErrorMessage(chatData.error || "Could not load chat.");
-        return;
-      }
-
-      setMessages(chatData.messages || []);
-
-      if (chatData.booking) {
-        setOtherUserName(chatData.booking.other_user_name || "Recipient");
-        setBookingTitle(chatData.booking.title || "Conversation");
-        setBookingStatus(chatData.booking.status || "pending");
-        setPreferredMeetingAt(chatData.booking.preferred_meeting_at || null);
-        setBudgetAmount(chatData.booking.budget_amount ?? null);
-        setCurrencyCode(chatData.booking.currency_code || "GBP");
-        setBookingCountry(chatData.booking.country || null);
-        setBookingRegion(chatData.booking.region || null);
-        setBookingCity(chatData.booking.city || null);
-        setBookingPostcode(chatData.booking.postcode || null);
-        setBookingAreaSlug(chatData.booking.area_slug || null);
-      }
-
-      await fetch("/api/messages/delivered", {
+      const response = await fetch("/api/messages/get", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ bookingId }),
       });
 
-      await fetch("/api/messages/mark-read", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId }),
-      });
+      const result = await response.json();
+
+      if (!response.ok) return;
+
+      if (Array.isArray(result.messages)) {
+        setMessages(result.messages.map(normalizeMessage));
+      }
+
+      if (result.booking) {
+        setBooking((prev) => ({
+          ...prev,
+          ...result.booking,
+        }));
+      }
+
+      if (result.participants) {
+        setParticipants(result.participants);
+      }
+
+      await markDelivered();
+      await markRead();
     } catch (error) {
-      console.error("load chat error:", error);
-      setErrorMessage("Could not load chat.");
-    } finally {
-      setLoading(false);
+      console.error("refresh thread error:", error);
     }
   }
 
-  async function handleSend(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function markDelivered() {
+    try {
+      await fetch("/api/messages/delivered", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ bookingId }),
+      });
+    } catch (error) {
+      console.error("mark delivered error:", error);
+    }
+  }
 
-    const trimmed = messageText.trim();
-    if (!trimmed) return;
+  async function markRead() {
+    try {
+      await fetch("/api/messages/read", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ bookingId }),
+      });
+    } catch (error) {
+      console.error("mark read error:", error);
+    }
+  }
+
+  async function handleSendMessage() {
+    const cleanDraft = draft.trim();
+
+    if (!cleanDraft) {
+      setErrorMessage("Please enter a message.");
+      return;
+    }
 
     try {
       setSending(true);
       setErrorMessage("");
 
-      const res = await fetch("/api/messages/send", {
+      const response = await fetch("/api/messages/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           bookingId,
-          content: trimmed,
+          content: cleanDraft,
         }),
       });
 
-      const raw = await res.text();
-      const data = raw ? JSON.parse(raw) : {};
+      const result = await response.json();
 
-      if (!res.ok) {
-        setErrorMessage(data?.error || "Could not send message.");
+      if (!response.ok) {
+        setErrorMessage(result?.error || "Could not send message.");
         return;
       }
 
-      if (data?.message) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === data.message.id)) return prev;
-          return [...prev, data.message];
-        });
-      }
-
-      setMessageText("");
-      setIsMeTyping(false);
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      await fetch("/api/messages/typing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, isTyping: false }),
-      });
+      setDraft("");
+      await refreshThread();
     } catch (error) {
       console.error("send message error:", error);
       setErrorMessage("Could not send message.");
@@ -274,308 +285,285 @@ export default function BookingMessagesClient({
     }
   }
 
-  async function handleInputChange(value: string) {
-    setMessageText(value);
+  async function handleRequestAction(action: string) {
+    try {
+      setWorking(true);
+      setErrorMessage("");
 
-    if (!value.trim()) {
-      setIsMeTyping(false);
+      const isProgressAction =
+        action === "start_work" ||
+        action === "mark_done" ||
+        action === "complete_work" ||
+        action === "cancel_request";
 
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+      const endpoint = isProgressAction
+        ? "/api/bookings/progress"
+        : "/api/bookings/update-status";
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bookingId,
+          action,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setErrorMessage(result?.error || "Could not update request.");
+        return;
       }
 
-      await fetch("/api/messages/typing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, isTyping: false }),
-      });
+      setBooking((prev) => ({
+        ...prev,
+        status: result.status || prev.status,
+      }));
 
-      return;
+      await refreshThread();
+      router.refresh();
+    } catch (error) {
+      console.error("request action error:", error);
+      setErrorMessage("Could not update request.");
+    } finally {
+      setWorking(false);
     }
-
-    setIsMeTyping(true);
-
-    await fetch("/api/messages/typing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookingId, isTyping: true }),
-    });
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = setTimeout(async () => {
-      setIsMeTyping(false);
-
-      await fetch("/api/messages/typing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, isTyping: false }),
-      });
-    }, 1500);
   }
 
-  useEffect(() => {
-    void loadChat();
-  }, [bookingId]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [sortedMessages.length, otherTyping]);
-
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    const channel = supabase
-      .channel(`messages-booking-${bookingId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `booking_id=eq.${bookingId}`,
-        },
-        async (payload) => {
-          const newMessage = payload.new as Message;
-
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMessage.id)) return prev;
-            return [...prev, newMessage];
-          });
-
-          if (newMessage.sender_id !== currentUserId) {
-            await fetch("/api/messages/delivered", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ bookingId }),
-            });
-
-            await fetch("/api/messages/mark-read", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ bookingId }),
-            });
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `booking_id=eq.${bookingId}`,
-        },
-        (payload) => {
-          const updated = payload.new as Message;
-          setMessages((prev) =>
-            prev.map((msg) => (msg.id === updated.id ? { ...msg, ...updated } : msg))
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "booking_typing",
-          filter: `booking_id=eq.${bookingId}`,
-        },
-        (payload) => {
-          const row = payload.new as TypingRow;
-          if (!row) return;
-          if (row.user_id === currentUserId) return;
-          setOtherTyping(!!row.is_typing);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      void fetch("/api/messages/typing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, isTyping: false }),
-      });
-
-      supabase.removeChannel(channel);
-    };
-  }, [bookingId, supabase, currentUserId]);
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
-        <section className="mx-auto max-w-4xl">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-sm text-slate-500">Loading chat...</p>
-          </div>
-        </section>
-      </main>
-    );
-  }
+  const canAccept = isWorker && booking.status === "pending";
+  const canWorkerCancel =
+    isWorker &&
+    booking.status !== "completed" &&
+    booking.status !== "cancelled";
+  const canHirerCancel =
+    isHirer &&
+    booking.status !== "completed" &&
+    booking.status !== "cancelled";
+  const canStartWork = isHirer && booking.status === "accepted";
+  const canMarkDone = isWorker && booking.status === "in_progress";
+  const canComplete = isHirer && booking.status === "worker_marked_done";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8">
-      <section className="mx-auto max-w-4xl">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-500">{bookingTitle}</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">
-              {otherUserName || "Recipient"}
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Live conversation for this booking
-            </p>
-          </div>
+    <main className="min-h-screen bg-slate-50 px-4 py-6 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl">
+        <div className="grid gap-6 lg:grid-cols-[360px,minmax(0,1fr)]">
+          <aside className="space-y-6">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">Request thread</p>
+                  <h1 className="mt-2 text-2xl font-bold text-slate-900">
+                    {booking.title || "Request"}
+                  </h1>
+                </div>
 
-          <div className="flex gap-3">
-            <DeleteChatButton bookingId={bookingId} variant="page" />
-            <Link
-              href="/messages"
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Back to messages
-            </Link>
-          </div>
-        </div>
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusClasses(
+                    booking.status
+                  )}`}
+                >
+                  {booking.status || "pending"}
+                </span>
+              </div>
 
-        <div className="mb-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-bold text-slate-900">{bookingTitle}</h2>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusBadgeClasses(
-                bookingStatus
-              )}`}
-            >
-              {bookingStatus}
-            </span>
-          </div>
+              <div className="mt-5 space-y-3 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold text-slate-900">With:</span>{" "}
+                  {otherPerson?.full_name || "Other participant"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Location:</span>{" "}
+                  {requestLocation}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Meeting time:</span>{" "}
+                  {booking.preferred_meeting_at
+                    ? formatDateTime(booking.preferred_meeting_at)
+                    : "Not specified"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Budget:</span>{" "}
+                  {booking.budget_amount != null
+                    ? `${booking.currency_code || "GBP"} ${booking.budget_amount}`
+                    : "Not specified"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Created:</span>{" "}
+                  {formatDateTime(booking.created_at)}
+                </p>
+              </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Location
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {bookingLocation}
-              </p>
-              {bookingPostcode ? (
-                <p className="mt-1 text-xs text-slate-500">{bookingPostcode}</p>
+              <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">
+                  Original request
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                  {booking.message || "No original request message."}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-900">Actions</h2>
+
+              {errorMessage ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {errorMessage}
+                </div>
               ) : null}
-            </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Budget
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {formatBudget(budgetAmount, currencyCode)}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Meeting time
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {preferredMeetingAt ? formatDateTime(preferredMeetingAt) : "Not set"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <section className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4 shadow-sm sm:p-6">
-          <div className="max-h-[65vh] overflow-y-auto rounded-[1.5rem] border border-slate-200 bg-white p-4 sm:p-6">
-            {errorMessage ? (
-              <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {errorMessage}
-              </div>
-            ) : null}
-
-            {sortedMessages.length === 0 ? (
-              <div className="rounded-2xl bg-slate-50 p-6 text-sm text-slate-500">
-                No messages yet. Start the conversation.
-              </div>
-            ) : (
-              sortedMessages.map((message) => {
-                const isMine = message.sender_id === currentUserId;
-
-                return (
-                  <div
-                    key={message.id}
-                    className={`mb-4 flex ${isMine ? "justify-end" : "justify-start"}`}
+              <div className="mt-5 grid gap-3">
+                {canAccept ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestAction("accepted")}
+                    disabled={working}
+                    className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
                   >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
-                        isMine
-                          ? "bg-indigo-600 text-white"
-                          : "border border-slate-200 bg-white text-slate-900"
-                      }`}
-                    >
-                      <p className="whitespace-pre-wrap break-words text-sm leading-7">
-                        {message.content}
-                      </p>
+                    Accept request
+                  </button>
+                ) : null}
 
+                {canStartWork ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestAction("start_work")}
+                    disabled={working}
+                    className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    Start work
+                  </button>
+                ) : null}
+
+                {canMarkDone ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestAction("mark_done")}
+                    disabled={working}
+                    className="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-60"
+                  >
+                    Mark work done
+                  </button>
+                ) : null}
+
+                {canComplete ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestAction("complete_work")}
+                    disabled={working}
+                    className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    Complete booking
+                  </button>
+                ) : null}
+
+                {canWorkerCancel || canHirerCancel ? (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestAction("cancel_request")}
+                    disabled={working}
+                    className="rounded-2xl border border-rose-300 bg-white px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                  >
+                    Cancel request
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-5">
+                <Link
+                  href="/messages"
+                  className="inline-flex rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                >
+                  Back to all messages
+                </Link>
+              </div>
+            </div>
+          </aside>
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-5 sm:px-8">
+              <h2 className="text-xl font-bold text-slate-900">Conversation</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Discuss details, timings, and next steps here.
+              </p>
+            </div>
+
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto px-6 py-6 sm:px-8">
+              {messages.length === 0 ? (
+                <div className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-600">
+                  No messages yet.
+                </div>
+              ) : (
+                messages.map((message) => {
+                  const mine = message.sender_id === currentUserId;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                    >
                       <div
-                        className={`mt-2 flex items-center justify-end gap-2 text-[11px] ${
-                          isMine ? "text-indigo-100" : "text-slate-400"
+                        className={`max-w-[85%] rounded-[1.5rem] px-4 py-3 shadow-sm ${
+                          mine
+                            ? "bg-indigo-600 text-white"
+                            : "bg-slate-100 text-slate-900"
                         }`}
                       >
-                        <span>{formatTime(message.created_at)}</span>
-                        <MessageStatus
-                          isMine={isMine}
-                          delivered={message.delivered}
-                          isRead={message.is_read}
-                        />
+                        <p className="whitespace-pre-wrap text-sm leading-7">
+                          {message.content || ""}
+                        </p>
+                        <div
+                          className={`mt-2 flex items-center justify-end gap-2 text-xs ${
+                            mine ? "text-indigo-100" : "text-slate-500"
+                          }`}
+                        >
+                          <span>{formatDateTime(message.created_at)}</span>
+                          {mine ? (
+                            <span>
+                              {message.is_read
+                                ? "Read"
+                                : message.delivered
+                                ? "Delivered"
+                                : "Sent"}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+              <div ref={scrollRef} />
+            </div>
 
-            {otherTyping ? (
-              <div className="mt-2 text-xs text-slate-500">
-                {otherUserName || "Recipient"} is typing...
-              </div>
-            ) : null}
-
-            <div ref={bottomRef} />
-          </div>
-
-          <div className="mt-6 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <form onSubmit={handleSend} className="flex flex-col gap-3">
-              <div className="flex items-end gap-3">
+            <div className="border-t border-slate-200 px-6 py-5 sm:px-8">
+              <div className="space-y-4">
                 <textarea
-                  rows={3}
-                  value={messageText}
-                  onChange={(e) => void handleInputChange(e.target.value)}
-                  placeholder={`Write a message to ${otherUserName || "recipient"}...`}
-                  className="w-full resize-none rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  rows={4}
+                  placeholder="Write your message..."
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500"
                 />
 
-                <button
-                  type="submit"
-                  disabled={sending || !messageText.trim()}
-                  className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {sending ? "Sending..." : "Send"}
-                </button>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={sending}
+                    className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    {sending ? "Sending..." : "Send message"}
+                  </button>
+                </div>
               </div>
-
-              <div className="flex min-h-[20px] items-center justify-between text-xs text-slate-400">
-                <span>{isMeTyping ? "Typing..." : ""}</span>
-                <span>{otherUserName || "Recipient"}</span>
-              </div>
-            </form>
-          </div>
-        </section>
+            </div>
+          </section>
+        </div>
       </section>
     </main>
   );
-} 
+}

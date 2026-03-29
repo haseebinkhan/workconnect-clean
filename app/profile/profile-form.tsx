@@ -116,8 +116,31 @@ function parseCertifications(text: string) {
     .filter(Boolean);
 }
 
-function availabilityToText(availability: Record<string, string[]>) {
-  return JSON.stringify(availability, null, 2);
+function buildStructuredLocationText({
+  city,
+  region,
+  country,
+  postcodePrefix,
+  postcodeFull,
+}: {
+  city?: string;
+  region?: string;
+  country?: string;
+  postcodePrefix?: string;
+  postcodeFull?: string;
+}) {
+  const parts = [city?.trim(), region?.trim(), country?.trim()].filter(Boolean);
+  const base = parts.join(", ");
+
+  if (postcodeFull?.trim()) {
+    return base ? `${base} (${postcodeFull.trim().toUpperCase()})` : postcodeFull.trim().toUpperCase();
+  }
+
+  if (postcodePrefix?.trim()) {
+    return base ? `${base} (${postcodePrefix.trim().toUpperCase()})` : postcodePrefix.trim().toUpperCase();
+  }
+
+  return base || "";
 }
 
 export default function ProfileForm({
@@ -209,6 +232,16 @@ export default function ProfileForm({
     () => getPostcodePrefixes(region, city),
     [region, city]
   );
+
+  const computedHirerLocation = useMemo(() => {
+    return buildStructuredLocationText({
+      city,
+      region,
+      country,
+      postcodePrefix,
+      postcodeFull,
+    });
+  }, [city, region, country, postcodePrefix, postcodeFull]);
 
   function toggleAvailability(day: string, shift: string) {
     setAvailability((prev) => {
@@ -351,11 +384,14 @@ export default function ProfileForm({
       }
 
       if (hirerEnabled) {
+        const finalHirerLocation =
+          hirerLocation.trim() || computedHirerLocation || city.trim() || null;
+
         const hirerPayload = {
           user_id: initialProfile.id,
           company_name: companyName.trim(),
           contact_name: contactName.trim() || null,
-          location: hirerLocation.trim() || city.trim() || null,
+          location: finalHirerLocation,
           industry: industry.trim() || null,
         };
 
@@ -863,14 +899,19 @@ export default function ProfileForm({
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Business location
+                Business location note
               </label>
               <input
                 type="text"
                 value={hirerLocation}
                 onChange={(e) => setHirerLocation(e.target.value)}
+                placeholder="Optional extra location note, branch name, office unit, etc."
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              <p className="mt-2 text-xs text-slate-500">
+                Your structured business area comes from the location selected above.
+                Use this only for extra detail.
+              </p>
             </div>
 
             <div>
@@ -884,6 +925,15 @@ export default function ProfileForm({
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900">
+              Structured hirer location
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {computedHirerLocation || "Select country, region, city, and postcode prefix above."}
+            </p>
           </div>
         </section>
       ) : null}
