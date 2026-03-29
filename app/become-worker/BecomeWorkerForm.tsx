@@ -292,7 +292,7 @@ export default function BecomeWorkerForm({
       setSuccessMessage("Worker profile saved successfully.");
 
       setTimeout(() => {
-        router.push("/worker");
+        router.push("/workers");
         router.refresh();
       }, 1200);
     } catch (error) {
