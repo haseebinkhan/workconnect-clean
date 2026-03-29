@@ -10,12 +10,11 @@ import {
 
 type JobItem = {
   id: string;
+  hirer_id?: string | null;
+  category?: string | null;
   title: string | null;
   title_slug?: string | null;
-  category?: string | null;
   description: string | null;
-  status: string | null;
-  visibility?: string | null;
   country?: string | null;
   region?: string | null;
   city?: string | null;
@@ -23,26 +22,30 @@ type JobItem = {
   postcode_prefix?: string | null;
   postcode_full?: string | null;
   area_slug?: string | null;
-  location_type?: string | null;
   budget_min?: number | null;
   budget_max?: number | null;
   currency_code?: string | null;
-  created_at?: string | null;
+  location_type?: string | null;
+  status?: string | null;
+  visibility?: string | null;
   expires_at?: string | null;
-  hirer_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  hirer_company_name?: string | null;
+  hirer_contact_name?: string | null;
+  hirer_industry?: string | null;
 };
 
-type WorkerProfileContext = {
-  category?: string | null;
-  country?: string | null;
-  region?: string | null;
-  city?: string | null;
-  postcode_prefix?: string | null;
+type WorkerDefaults = {
+  category?: string;
+  region?: string;
+  city?: string;
+  postcodePrefix?: string;
 };
 
 type JobsSearchClientProps = {
-  jobs: JobItem[];
-  workerProfile?: WorkerProfileContext | null;
+  initialJobs: JobItem[];
+  workerDefaults?: WorkerDefaults | null;
 };
 
 const CATEGORY_OPTIONS = [
@@ -122,24 +125,22 @@ function getEffectivePostcodePrefix(job: JobItem) {
 
 function getRecommendationScore(
   job: JobItem,
-  workerProfile?: WorkerProfileContext | null
+  workerDefaults?: WorkerDefaults | null
 ) {
-  if (!workerProfile) return 0;
+  if (!workerDefaults) return 0;
 
   let score = 0;
 
-  const workerCategory = (workerProfile.category || "").trim().toLowerCase();
+  const workerCategory = (workerDefaults.category || "").trim().toLowerCase();
   const jobCategory = (job.category || "").trim().toLowerCase();
 
-  const workerRegion = (workerProfile.region || "").trim().toLowerCase();
+  const workerRegion = (workerDefaults.region || "").trim().toLowerCase();
   const jobRegion = (job.region || "").trim().toLowerCase();
 
-  const workerCity = (workerProfile.city || "").trim().toLowerCase();
+  const workerCity = (workerDefaults.city || "").trim().toLowerCase();
   const jobCity = (job.city || "").trim().toLowerCase();
 
-  const workerPrefix = (workerProfile.postcode_prefix || "")
-    .trim()
-    .toUpperCase();
+  const workerPrefix = (workerDefaults.postcodePrefix || "").trim().toUpperCase();
   const jobPrefix = getEffectivePostcodePrefix(job).trim().toUpperCase();
 
   if (workerCategory && jobCategory && workerCategory === jobCategory) {
@@ -162,22 +163,24 @@ function getRecommendationScore(
 }
 
 export default function JobsSearchClient({
-  jobs,
-  workerProfile,
+  initialJobs,
+  workerDefaults,
 }: JobsSearchClientProps) {
   const regions = useMemo(() => getRegions(), []);
 
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState(workerProfile?.category || "");
-  const [region, setRegion] = useState(workerProfile?.region || "");
-  const [city, setCity] = useState(workerProfile?.city || "");
+  const [category, setCategory] = useState(workerDefaults?.category || "");
+  const [region, setRegion] = useState(workerDefaults?.region || "");
+  const [city, setCity] = useState(workerDefaults?.city || "");
   const [postcodePrefix, setPostcodePrefix] = useState(
-    workerProfile?.postcode_prefix || ""
+    workerDefaults?.postcodePrefix || ""
   );
   const [locationType, setLocationType] = useState("");
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
-  const [sortBy, setSortBy] = useState(workerProfile ? "recommended" : "newest");
+  const [sortBy, setSortBy] = useState(
+    workerDefaults ? "recommended" : "newest"
+  );
 
   const cityOptions = useMemo(() => getCities(region), [region]);
   const postcodePrefixOptions = useMemo(
@@ -190,14 +193,15 @@ export default function JobsSearchClient({
     const minBudgetValue = budgetMin.trim() ? Number(budgetMin) : null;
     const maxBudgetValue = budgetMax.trim() ? Number(budgetMax) : null;
 
-    const filtered = jobs.filter((job) => {
+    const filtered = (initialJobs || []).filter((job) => {
       const matchesSearch =
         !searchLower ||
         (job.title || "").toLowerCase().includes(searchLower) ||
         (job.description || "").toLowerCase().includes(searchLower) ||
         (job.category || "").toLowerCase().includes(searchLower) ||
         (job.city || "").toLowerCase().includes(searchLower) ||
-        (job.region || "").toLowerCase().includes(searchLower);
+        (job.region || "").toLowerCase().includes(searchLower) ||
+        (job.hirer_company_name || "").toLowerCase().includes(searchLower);
 
       if (!matchesSearch) return false;
 
@@ -206,18 +210,23 @@ export default function JobsSearchClient({
       if (city && (job.city || "") !== city) return false;
 
       const jobPrefix = getEffectivePostcodePrefix(job);
-      if (postcodePrefix && jobPrefix !== postcodePrefix) return false;
+      if (
+        postcodePrefix &&
+        jobPrefix.toUpperCase() !== postcodePrefix.toUpperCase()
+      ) {
+        return false;
+      }
 
       if (locationType && (job.location_type || "") !== locationType) {
         return false;
       }
 
-      if (minBudgetValue != null) {
+      if (minBudgetValue != null && !Number.isNaN(minBudgetValue)) {
         const jobMax = job.budget_max ?? job.budget_min ?? null;
         if (jobMax != null && jobMax < minBudgetValue) return false;
       }
 
-      if (maxBudgetValue != null) {
+      if (maxBudgetValue != null && !Number.isNaN(maxBudgetValue)) {
         const jobMin = job.budget_min ?? job.budget_max ?? null;
         if (jobMin != null && jobMin > maxBudgetValue) return false;
       }
@@ -229,8 +238,9 @@ export default function JobsSearchClient({
 
     sorted.sort((a, b) => {
       if (sortBy === "recommended") {
-        const scoreA = getRecommendationScore(a, workerProfile);
-        const scoreB = getRecommendationScore(b, workerProfile);
+        const scoreA = getRecommendationScore(a, workerDefaults);
+        const scoreB = getRecommendationScore(b, workerDefaults);
+
         if (scoreB !== scoreA) return scoreB - scoreA;
 
         const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -257,7 +267,7 @@ export default function JobsSearchClient({
 
     return sorted;
   }, [
-    jobs,
+    initialJobs,
     search,
     category,
     region,
@@ -267,19 +277,19 @@ export default function JobsSearchClient({
     budgetMin,
     budgetMax,
     sortBy,
-    workerProfile,
+    workerDefaults,
   ]);
 
   function resetFilters() {
     setSearch("");
-    setCategory(workerProfile?.category || "");
-    setRegion(workerProfile?.region || "");
-    setCity(workerProfile?.city || "");
-    setPostcodePrefix(workerProfile?.postcode_prefix || "");
+    setCategory(workerDefaults?.category || "");
+    setRegion(workerDefaults?.region || "");
+    setCity(workerDefaults?.city || "");
+    setPostcodePrefix(workerDefaults?.postcodePrefix || "");
     setLocationType("");
     setBudgetMin("");
     setBudgetMax("");
-    setSortBy(workerProfile ? "recommended" : "newest");
+    setSortBy(workerDefaults ? "recommended" : "newest");
   }
 
   return (
@@ -346,7 +356,7 @@ export default function JobsSearchClient({
               onChange={(e) => setSortBy(e.target.value)}
               className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
             >
-              {workerProfile ? (
+              {workerDefaults ? (
                 <option value="recommended">Recommended</option>
               ) : null}
               <option value="newest">Newest</option>
@@ -469,7 +479,7 @@ export default function JobsSearchClient({
           </div>
         </div>
 
-        {workerProfile ? (
+        {workerDefaults ? (
           <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
             Jobs are being ranked to favour matches closer to your category and area.
           </div>
@@ -502,7 +512,7 @@ export default function JobsSearchClient({
             {filteredJobs.map((job) => {
               const recommendationScore = getRecommendationScore(
                 job,
-                workerProfile
+                workerDefaults
               );
 
               return (
@@ -532,7 +542,7 @@ export default function JobsSearchClient({
                           </span>
                         ) : null}
 
-                        {workerProfile && recommendationScore > 0 ? (
+                        {workerDefaults && recommendationScore > 0 ? (
                           <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                             Good match
                           </span>
@@ -573,6 +583,20 @@ export default function JobsSearchClient({
                   <p className="mt-5 text-sm leading-7 text-slate-600">
                     {compactText(job.description)}
                   </p>
+
+                  <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Posted by
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {job.hirer_company_name || job.hirer_contact_name || "Hirer"}
+                    </p>
+                    {job.hirer_industry ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {job.hirer_industry}
+                      </p>
+                    ) : null}
+                  </div>
 
                   <div className="mt-6 flex gap-3">
                     <Link
