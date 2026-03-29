@@ -89,7 +89,7 @@ const JOB_OPTIONS: Record<string, string[]> = {
     "Nanny Help",
     "After School Childcare",
   ],
-  Pet Care: [
+  "Pet Care": [
     "Dog Walker",
     "Pet Sitter",
     "Cat Care",

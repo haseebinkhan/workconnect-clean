@@ -7,298 +7,594 @@ import {
   getPostcodePrefixes,
   getRegions,
 } from "@/lib/uk-locations";
-import type { JobSearchItem } from "./page";
 
-function formatDateTime(value?: string | null) {
+type JobItem = {
+  id: string;
+  title: string | null;
+  title_slug?: string | null;
+  category?: string | null;
+  description: string | null;
+  status: string | null;
+  visibility?: string | null;
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  postcode_prefix?: string | null;
+  postcode_full?: string | null;
+  area_slug?: string | null;
+  location_type?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  currency_code?: string | null;
+  created_at?: string | null;
+  expires_at?: string | null;
+  hirer_id?: string | null;
+};
+
+type WorkerProfileContext = {
+  category?: string | null;
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode_prefix?: string | null;
+};
+
+type JobsSearchClientProps = {
+  jobs: JobItem[];
+  workerProfile?: WorkerProfileContext | null;
+};
+
+const CATEGORY_OPTIONS = [
+  "Cleaning",
+  "Electrical",
+  "Plumbing",
+  "Painting",
+  "Gardening",
+  "Handyman",
+  "Moving",
+  "Delivery",
+  "Warehouse",
+  "Hospitality",
+  "Care",
+  "Childcare",
+  "Pet Care",
+  "Tutoring",
+  "Admin",
+  "IT",
+  "General",
+];
+
+function formatDate(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("en-GB", {
+  return date.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
-function compactText(value?: string | null, max = 180) {
+function compactText(value?: string | null, max = 140) {
   const text = (value || "").trim();
-  if (!text) return "";
+  if (!text) return "No description provided yet.";
   if (text.length <= max) return text;
   return `${text.slice(0, max).trim()}…`;
 }
 
-function formatBudget(job: JobSearchItem) {
-  if (job.budgetMin != null || job.budgetMax != null) {
-    return `${job.currencyCode || "GBP"} ${job.budgetMin ?? 0} - ${
-      job.budgetMax ?? 0
-    }`;
+function formatBudget(job: JobItem) {
+  const currency = job.currency_code || "GBP";
+
+  if (job.budget_min != null && job.budget_max != null) {
+    return `${currency} ${job.budget_min} - ${job.budget_max}`;
   }
-  return "Not specified";
+
+  if (job.budget_min != null) {
+    return `${currency} ${job.budget_min}+`;
+  }
+
+  if (job.budget_max != null) {
+    return `Up to ${currency} ${job.budget_max}`;
+  }
+
+  return "Budget not specified";
 }
 
-function formatLocation(job: JobSearchItem) {
+function formatLocation(job: JobItem) {
   const parts = [job.city, job.region, job.country].filter(Boolean);
   if (parts.length > 0) return parts.join(", ");
-  if (job.postcodePrefix) return job.postcodePrefix;
-  if (job.areaSlug) return job.areaSlug;
+  if (job.postcode_full) return job.postcode_full;
+  if (job.postcode_prefix) return job.postcode_prefix;
+  if (job.postcode) return job.postcode;
+  if (job.area_slug) return job.area_slug;
   return "Location not specified";
+}
+
+function getEffectivePostcodePrefix(job: JobItem) {
+  return (
+    job.postcode_prefix ||
+    job.postcode ||
+    (job.postcode_full ? job.postcode_full.split(" ")[0] : "") ||
+    ""
+  );
+}
+
+function getRecommendationScore(
+  job: JobItem,
+  workerProfile?: WorkerProfileContext | null
+) {
+  if (!workerProfile) return 0;
+
+  let score = 0;
+
+  const workerCategory = (workerProfile.category || "").trim().toLowerCase();
+  const jobCategory = (job.category || "").trim().toLowerCase();
+
+  const workerRegion = (workerProfile.region || "").trim().toLowerCase();
+  const jobRegion = (job.region || "").trim().toLowerCase();
+
+  const workerCity = (workerProfile.city || "").trim().toLowerCase();
+  const jobCity = (job.city || "").trim().toLowerCase();
+
+  const workerPrefix = (workerProfile.postcode_prefix || "")
+    .trim()
+    .toUpperCase();
+  const jobPrefix = getEffectivePostcodePrefix(job).trim().toUpperCase();
+
+  if (workerCategory && jobCategory && workerCategory === jobCategory) {
+    score += 50;
+  }
+
+  if (workerRegion && jobRegion && workerRegion === jobRegion) {
+    score += 25;
+  }
+
+  if (workerCity && jobCity && workerCity === jobCity) {
+    score += 20;
+  }
+
+  if (workerPrefix && jobPrefix && workerPrefix === jobPrefix) {
+    score += 15;
+  }
+
+  return score;
 }
 
 export default function JobsSearchClient({
   jobs,
-  defaultRegion = "",
-}: {
-  jobs: JobSearchItem[];
-  defaultRegion?: string;
-}) {
-  const [query, setQuery] = useState("");
-  const [region, setRegion] = useState(defaultRegion || "");
-  const [city, setCity] = useState("all");
-  const [postcodePrefix, setPostcodePrefix] = useState("all");
-
+  workerProfile,
+}: JobsSearchClientProps) {
   const regions = useMemo(() => getRegions(), []);
-  const cityOptions = useMemo(() => (region ? getCities(region) : []), [region]);
-  const postcodePrefixOptions = useMemo(() => {
-    if (!region || city === "all") return [];
-    return getPostcodePrefixes(region, city);
-  }, [region, city]);
+
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState(workerProfile?.category || "");
+  const [region, setRegion] = useState(workerProfile?.region || "");
+  const [city, setCity] = useState(workerProfile?.city || "");
+  const [postcodePrefix, setPostcodePrefix] = useState(
+    workerProfile?.postcode_prefix || ""
+  );
+  const [locationType, setLocationType] = useState("");
+  const [budgetMin, setBudgetMin] = useState("");
+  const [budgetMax, setBudgetMax] = useState("");
+  const [sortBy, setSortBy] = useState(workerProfile ? "recommended" : "newest");
+
+  const cityOptions = useMemo(() => getCities(region), [region]);
+  const postcodePrefixOptions = useMemo(
+    () => getPostcodePrefixes(region, city),
+    [region, city]
+  );
 
   const filteredJobs = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const searchLower = search.trim().toLowerCase();
+    const minBudgetValue = budgetMin.trim() ? Number(budgetMin) : null;
+    const maxBudgetValue = budgetMax.trim() ? Number(budgetMax) : null;
 
-    return jobs.filter((job) => {
-      const haystack = [
-        job.title,
-        job.description || "",
-        job.country || "",
-        job.region || "",
-        job.city || "",
-        job.postcodePrefix || "",
-        job.postcodeFull || "",
-        job.areaSlug || "",
-        job.locationType || "",
-      ]
-        .join(" ")
-        .toLowerCase();
+    const filtered = jobs.filter((job) => {
+      const matchesSearch =
+        !searchLower ||
+        (job.title || "").toLowerCase().includes(searchLower) ||
+        (job.description || "").toLowerCase().includes(searchLower) ||
+        (job.category || "").toLowerCase().includes(searchLower) ||
+        (job.city || "").toLowerCase().includes(searchLower) ||
+        (job.region || "").toLowerCase().includes(searchLower);
 
-      const queryMatch = q ? haystack.includes(q) : true;
+      if (!matchesSearch) return false;
 
-      const regionMatch = !region
-        ? true
-        : (job.region || "").trim().toLowerCase() === region.trim().toLowerCase();
+      if (category && (job.category || "") !== category) return false;
+      if (region && (job.region || "") !== region) return false;
+      if (city && (job.city || "") !== city) return false;
 
-      const cityMatch =
-        city === "all"
-          ? true
-          : (job.city || "").trim().toLowerCase() === city.trim().toLowerCase();
+      const jobPrefix = getEffectivePostcodePrefix(job);
+      if (postcodePrefix && jobPrefix !== postcodePrefix) return false;
 
-      const postcodePrefixMatch =
-        postcodePrefix === "all"
-          ? true
-          : (job.postcodePrefix || "").trim().toLowerCase() ===
-            postcodePrefix.trim().toLowerCase();
+      if (locationType && (job.location_type || "") !== locationType) {
+        return false;
+      }
 
-      return queryMatch && regionMatch && cityMatch && postcodePrefixMatch;
+      if (minBudgetValue != null) {
+        const jobMax = job.budget_max ?? job.budget_min ?? null;
+        if (jobMax != null && jobMax < minBudgetValue) return false;
+      }
+
+      if (maxBudgetValue != null) {
+        const jobMin = job.budget_min ?? job.budget_max ?? null;
+        if (jobMin != null && jobMin > maxBudgetValue) return false;
+      }
+
+      return true;
     });
-  }, [jobs, query, region, city, postcodePrefix]);
+
+    const sorted = [...filtered];
+
+    sorted.sort((a, b) => {
+      if (sortBy === "recommended") {
+        const scoreA = getRecommendationScore(a, workerProfile);
+        const scoreB = getRecommendationScore(b, workerProfile);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      }
+
+      if (sortBy === "budget_high") {
+        const aValue = a.budget_max ?? a.budget_min ?? 0;
+        const bValue = b.budget_max ?? b.budget_min ?? 0;
+        return bValue - aValue;
+      }
+
+      if (sortBy === "budget_low") {
+        const aValue = a.budget_min ?? a.budget_max ?? 0;
+        const bValue = b.budget_min ?? b.budget_max ?? 0;
+        return aValue - bValue;
+      }
+
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return sorted;
+  }, [
+    jobs,
+    search,
+    category,
+    region,
+    city,
+    postcodePrefix,
+    locationType,
+    budgetMin,
+    budgetMax,
+    sortBy,
+    workerProfile,
+  ]);
+
+  function resetFilters() {
+    setSearch("");
+    setCategory(workerProfile?.category || "");
+    setRegion(workerProfile?.region || "");
+    setCity(workerProfile?.city || "");
+    setPostcodePrefix(workerProfile?.postcode_prefix || "");
+    setLocationType("");
+    setBudgetMin("");
+    setBudgetMax("");
+    setSortBy(workerProfile ? "recommended" : "newest");
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-      <section className="mx-auto max-w-7xl">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-500">Jobs</p>
-              <h1 className="mt-2 text-3xl font-bold text-slate-900">
-                Find local jobs
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-                Browse jobs across the United Kingdom by region, city, postcode
-                prefix, and keywords.
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <span className="font-semibold text-slate-900">
-                {filteredJobs.length}
-              </span>{" "}
-              job{filteredJobs.length === 1 ? "" : "s"} found
-            </div>
+    <div className="space-y-8">
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">Job search</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900">
+              Find local jobs faster
+            </h2>
+            <p className="mt-2 text-sm leading-7 text-slate-600">
+              Filter jobs by category, area, postcode prefix, work type, and budget.
+            </p>
           </div>
 
-          <div className="mt-8 grid gap-4 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Search
-              </label>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Job title, description, city, postcode..."
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
-              />
-            </div>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+          >
+            Reset filters
+          </button>
+        </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Nation / region
-              </label>
-              <select
-                value={region}
-                onChange={(e) => {
-                  const nextRegion = e.target.value;
-                  setRegion(nextRegion);
-                  setCity("all");
-                  setPostcodePrefix("all");
-                }}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500"
-              >
-                <option value="">All regions</option>
-                {regions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="xl:col-span-2">
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Search
+            </label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by title, category, city, or keyword"
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                City / main area
-              </label>
-              <select
-                value={city}
-                onChange={(e) => {
-                  setCity(e.target.value);
-                  setPostcodePrefix("all");
-                }}
-                disabled={!region}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500 disabled:bg-slate-100"
-              >
-                <option value="all">
-                  {region ? "All cities / areas" : "Select region first"}
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All categories</option>
+              {CATEGORY_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
                 </option>
-                {cityOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+              ))}
+            </select>
+          </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Postcode prefix
-              </label>
-              <select
-                value={postcodePrefix}
-                onChange={(e) => setPostcodePrefix(e.target.value)}
-                disabled={!region || city === "all"}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-indigo-500 disabled:bg-slate-100"
-              >
-                <option value="all">
-                  {city !== "all" ? "All prefixes" : "Select city first"}
-                </option>
-                {postcodePrefixOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Sort by
+            </label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              {workerProfile ? (
+                <option value="recommended">Recommended</option>
+              ) : null}
+              <option value="newest">Newest</option>
+              <option value="budget_high">Highest budget</option>
+              <option value="budget_low">Lowest budget</option>
+            </select>
           </div>
         </div>
 
-        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {filteredJobs.length > 0 ? (
-            filteredJobs.map((job) => (
-              <article
-                key={job.id}
-                className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">
-                      {job.title}
-                    </h2>
-                    <p className="mt-2 text-sm text-slate-500">
-                      Posted {formatDateTime(job.createdAt)}
-                    </p>
-                  </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Nation / region
+            </label>
+            <select
+              value={region}
+              onChange={(e) => {
+                setRegion(e.target.value);
+                setCity("");
+                setPostcodePrefix("");
+              }}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All regions</option>
+              {regions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
 
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    {job.status}
-                  </span>
-                </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              City / town
+            </label>
+            <select
+              value={city}
+              onChange={(e) => {
+                setCity(e.target.value);
+                setPostcodePrefix("");
+              }}
+              disabled={!region}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+            >
+              <option value="">
+                {region ? "All cities" : "Select region first"}
+              </option>
+              {cityOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Location
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatLocation(job)}
-                    </p>
-                  </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Postcode prefix
+            </label>
+            <select
+              value={postcodePrefix}
+              onChange={(e) => setPostcodePrefix(e.target.value)}
+              disabled={!region || !city}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+            >
+              <option value="">
+                {city ? "All prefixes" : "Select city first"}
+              </option>
+              {postcodePrefixOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
 
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Postcode
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {job.postcodePrefix || job.postcodeFull || "Not specified"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Budget
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatBudget(job)}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Type
-                    </p>
-                    <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
-                      {job.locationType || "Not specified"}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-5 line-clamp-4 text-sm leading-7 text-slate-600">
-                  {compactText(job.description, 220) || "No description provided."}
-                </p>
-
-                <div className="mt-6 flex gap-3">
-                  <Link
-                    href={`/jobs/${job.id}`}
-                    className="flex-1 rounded-2xl bg-indigo-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-indigo-700"
-                  >
-                    View job
-                  </Link>
-                </div>
-              </article>
-            ))
-          ) : (
-            <div className="md:col-span-2 xl:col-span-3">
-              <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
-                <h3 className="text-2xl font-bold text-slate-900">
-                  No jobs found
-                </h3>
-                <p className="mt-3 text-slate-600">
-                  Try changing region, city, postcode prefix, or search terms.
-                </p>
-              </div>
-            </div>
-          )}
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Work type
+            </label>
+            <select
+              value={locationType}
+              onChange={(e) => setLocationType(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All work types</option>
+              <option value="local">Local / on-site</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
         </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:max-w-xl">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Minimum budget
+            </label>
+            <input
+              type="number"
+              value={budgetMin}
+              onChange={(e) => setBudgetMin(e.target.value)}
+              placeholder="e.g. 50"
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Maximum budget
+            </label>
+            <input
+              type="number"
+              value={budgetMax}
+              onChange={(e) => setBudgetMax(e.target.value)}
+              placeholder="e.g. 200"
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        {workerProfile ? (
+          <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+            Jobs are being ranked to favour matches closer to your category and area.
+          </div>
+        ) : null}
       </section>
-    </main>
+
+      <section className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-2xl font-bold text-slate-900">
+              Available jobs
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"} found
+            </p>
+          </div>
+        </div>
+
+        {filteredJobs.length === 0 ? (
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
+            <h4 className="text-xl font-semibold text-slate-900">
+              No matching jobs found
+            </h4>
+            <p className="mt-2 text-sm text-slate-600">
+              Try changing your filters to see more results.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {filteredJobs.map((job) => {
+              const recommendationScore = getRecommendationScore(
+                job,
+                workerProfile
+              );
+
+              return (
+                <article
+                  key={job.id}
+                  className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-xl font-bold text-slate-900">
+                        {job.title || "Untitled job"}
+                      </h4>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {job.category ? (
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {job.category}
+                          </span>
+                        ) : null}
+
+                        {job.location_type ? (
+                          <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                            {job.location_type === "local"
+                              ? "Local / on-site"
+                              : job.location_type === "remote"
+                              ? "Remote"
+                              : "Hybrid"}
+                          </span>
+                        ) : null}
+
+                        {workerProfile && recommendationScore > 0 ? (
+                          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            Good match
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3 text-right">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Budget
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-900">
+                        {formatBudget(job)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Location
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {formatLocation(job)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Posted
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {formatDate(job.created_at) || "Recently"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-5 text-sm leading-7 text-slate-600">
+                    {compactText(job.description)}
+                  </p>
+
+                  <div className="mt-6 flex gap-3">
+                    <Link
+                      href={`/jobs/${job.id}`}
+                      className="flex-1 rounded-2xl bg-indigo-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-indigo-700"
+                    >
+                      View job
+                    </Link>
+
+                    <Link
+                      href={`/jobs/${job.id}`}
+                      className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                    >
+                      Apply
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
