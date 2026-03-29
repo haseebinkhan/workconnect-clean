@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 const adminSupabase = createAdminClient(
@@ -18,13 +18,14 @@ function normalizeAction(value: unknown): ActionType | null {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createServerClient();
+    const supabase = createServerClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -97,7 +98,10 @@ export async function POST(req: Request) {
         .eq("id", booking.id);
 
       if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 400 });
+        return NextResponse.json(
+          { error: updateError.message },
+          { status: 400 }
+        );
       }
 
       await adminSupabase.from("notifications").insert([
@@ -141,14 +145,17 @@ export async function POST(req: Request) {
       .from("bookings")
       .update({
         status: "cancelled",
-        seen_by_worker: isWorker ? true : false,
-        seen_by_hirer: isHirer ? true : false,
+        seen_by_worker: isWorker,
+        seen_by_hirer: isHirer,
         updated_at: new Date().toISOString(),
       })
       .eq("id", booking.id);
 
     if (cancelError) {
-      return NextResponse.json({ error: cancelError.message }, { status: 400 });
+      return NextResponse.json(
+        { error: cancelError.message },
+        { status: 400 }
+      );
     }
 
     const notifyUserId = isWorker ? booking.hirer_user_id : booking.worker_user_id;
