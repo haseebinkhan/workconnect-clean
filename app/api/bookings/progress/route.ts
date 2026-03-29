@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 const adminSupabase = createAdminClient(
@@ -32,13 +32,14 @@ function normalizeAction(value: unknown): ProgressAction | null {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createServerClient();
+    const supabase = createServerClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
