@@ -1,87 +1,195 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  getCities,
+  getPostcodePrefixes,
+  getRegions,
+  isValidUKFullPostcode,
+} from "@/lib/uk-locations";
 
-type AreaItem = {
-  id: string;
-  name: string;
-  slug: string;
-  region?: string | null;
+const JOB_OPTIONS: Record<string, string[]> = {
+  Cleaning: [
+    "House Cleaner",
+    "Office Cleaner",
+    "Deep Cleaner",
+    "End of Tenancy Cleaner",
+    "Commercial Cleaner",
+  ],
+  Electrical: [
+    "Domestic Electrician",
+    "Emergency Electrician",
+    "Electrical Repair",
+    "Electrical Installation",
+    "PAT Testing",
+  ],
+  Plumbing: [
+    "Domestic Plumber",
+    "Emergency Plumber",
+    "Leak Repair",
+    "Bathroom Plumbing",
+    "Kitchen Plumbing",
+  ],
+  Painting: [
+    "House Painter",
+    "Interior Painter",
+    "Exterior Painter",
+    "Decorator",
+    "Wallpaper Installer",
+  ],
+  Gardening: [
+    "Gardener",
+    "Lawn Care",
+    "Hedge Trimming",
+    "Garden Clearance",
+    "Landscaping Help",
+  ],
+  Handyman: [
+    "General Handyman",
+    "Furniture Assembly",
+    "Wall Mounting",
+    "Minor Repairs",
+    "Home Maintenance",
+  ],
+  Moving: [
+    "House Move Help",
+    "Furniture Mover",
+    "Packing Help",
+    "Removal Assistant",
+    "Heavy Lifting Help",
+  ],
+  Delivery: [
+    "Delivery Driver",
+    "Local Courier",
+    "Parcel Delivery",
+    "Same Day Delivery",
+  ],
+  Warehouse: [
+    "Warehouse Worker",
+    "Picker Packer",
+    "Loading Assistant",
+    "Stock Assistant",
+  ],
+  Hospitality: [
+    "Kitchen Assistant",
+    "Waiter / Waitress",
+    "Bar Staff",
+    "Event Staff",
+    "Catering Assistant",
+  ],
+  Care: [
+    "Care Assistant",
+    "Support Worker",
+    "Home Help",
+    "Companion Care",
+  ],
+  Childcare: [
+    "Babysitter",
+    "Nanny Help",
+    "After School Childcare",
+  ],
+  Pet Care: [
+    "Dog Walker",
+    "Pet Sitter",
+    "Cat Care",
+    "Pet Visit Help",
+  ],
+  Tutoring: [
+    "Math Tutor",
+    "English Tutor",
+    "Science Tutor",
+    "Primary School Tutor",
+    "IT Tutor",
+  ],
+  Admin: [
+    "Administrative Assistant",
+    "Data Entry Help",
+    "Office Support",
+    "Reception Cover",
+  ],
+  IT: [
+    "IT Support",
+    "Computer Repair",
+    "Printer Setup",
+    "Wi-Fi Setup",
+    "Website Help",
+  ],
+  General: [
+    "General Labour",
+    "Odd Job Help",
+    "Temporary Worker",
+    "Local Helper",
+    "Other",
+  ],
 };
-
-const UK_COUNTRIES = [
-  { value: "United Kingdom", label: "United Kingdom" },
-];
-
-const UK_REGIONS = [
-  "England",
-  "Northern Ireland",
-  "Scotland",
-  "Wales",
-];
 
 function slugifyArea(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
-export default function PostJobForm({
-  areas,
-  regions,
-  defaultCountry,
-  defaultRegion,
-  defaultCity,
-}: {
-  areas: AreaItem[];
-  regions?: string[];
-  defaultCountry?: string;
-  defaultRegion?: string;
-  defaultCity?: string;
-}) {
+function slugifyTitle(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s/g, "-");
+}
+
+export default function PostJobForm() {
   const router = useRouter();
 
-  const regionOptions = regions && regions.length > 0 ? regions : UK_REGIONS;
+  const regions = useMemo(() => getRegions(), []);
 
-  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [selectedTitle, setSelectedTitle] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [country, setCountry] = useState(defaultCountry || "United Kingdom");
-  const [region, setRegion] = useState(defaultRegion || "Northern Ireland");
-  const [city, setCity] = useState(defaultCity || "");
-  const [postcode, setPostcode] = useState("");
-  const [areaSlug, setAreaSlug] = useState("");
+
+  const [country, setCountry] = useState("United Kingdom");
+  const [region, setRegion] = useState("");
+  const [city, setCity] = useState("");
+  const [postcodePrefix, setPostcodePrefix] = useState("");
+  const [postcodeFull, setPostcodeFull] = useState("");
+
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [currencyCode, setCurrencyCode] = useState("GBP");
+  const [locationType, setLocationType] = useState("local");
+
+  const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const canSubmit = useMemo(() => {
-    return (
-      title.trim().length > 0 &&
-      description.trim().length > 0 &&
-      country.trim().length > 0 &&
-      region.trim().length > 0 &&
-      city.trim().length > 0 &&
-      postcode.trim().length > 0 &&
-      !submitting
-    );
-  }, [title, description, country, region, city, postcode, submitting]);
+  const titleOptions = useMemo(() => {
+    return category ? JOB_OPTIONS[category] || [] : [];
+  }, [category]);
+
+  const cityOptions = useMemo(() => getCities(region), [region]);
+
+  const postcodePrefixOptions = useMemo(() => {
+    return getPostcodePrefixes(region, city);
+  }, [region, city]);
+
+  const finalTitle =
+    selectedTitle === "Other" ? customTitle.trim() : selectedTitle.trim();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (!title.trim()) {
-      setErrorMessage("Please enter a job title.");
+    if (!category.trim()) {
+      setErrorMessage("Please select a job category.");
+      return;
+    }
+
+    if (!finalTitle) {
+      setErrorMessage("Please select or enter a job title.");
       return;
     }
 
     if (!description.trim()) {
-      setErrorMessage("Please enter a job description.");
-      return;
-    }
-
-    if (!country.trim()) {
-      setErrorMessage("Please select a country.");
+      setErrorMessage("Please enter a clear job description.");
       return;
     }
 
@@ -91,93 +199,101 @@ export default function PostJobForm({
     }
 
     if (!city.trim()) {
-      setErrorMessage("Please enter a city or town.");
+      setErrorMessage("Please select a city or town.");
       return;
     }
 
-    if (!postcode.trim()) {
-      setErrorMessage("Please enter a postcode.");
+    if (!postcodePrefix.trim()) {
+      setErrorMessage("Please select a postcode prefix.");
       return;
     }
 
-    if (budgetMin && Number.isNaN(Number(budgetMin))) {
+    if (postcodeFull.trim() && !isValidUKFullPostcode(postcodeFull)) {
+      setErrorMessage("Please enter a valid full UK postcode or leave it blank.");
+      return;
+    }
+
+    if (!budgetMin.trim() && !budgetMax.trim()) {
+      setErrorMessage("Please enter at least one budget value.");
+      return;
+    }
+
+    const minValue = budgetMin.trim() ? Number(budgetMin) : null;
+    const maxValue = budgetMax.trim() ? Number(budgetMax) : null;
+
+    if (budgetMin.trim() && Number.isNaN(minValue)) {
       setErrorMessage("Minimum budget must be a valid number.");
       return;
     }
 
-    if (budgetMax && Number.isNaN(Number(budgetMax))) {
+    if (budgetMax.trim() && Number.isNaN(maxValue)) {
       setErrorMessage("Maximum budget must be a valid number.");
       return;
     }
 
-    if (budgetMin && budgetMax && Number(budgetMin) > Number(budgetMax)) {
+    if (
+      minValue != null &&
+      maxValue != null &&
+      Number(minValue) > Number(maxValue)
+    ) {
       setErrorMessage("Minimum budget cannot be greater than maximum budget.");
       return;
     }
 
     try {
-      setSubmitting(true);
+      setSaving(true);
       setErrorMessage("");
       setSuccessMessage("");
 
-      const computedAreaSlug =
-        areaSlug.trim() || slugifyArea(city.trim() || region.trim());
+      const areaSlug = slugifyArea(city || region || finalTitle);
 
-      const res = await fetch("/api/jobs/create", {
+      const response = await fetch("/api/jobs/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: title.trim(),
+          category,
+          title: finalTitle,
+          titleSlug: slugifyTitle(finalTitle),
           description: description.trim(),
-          areaSlug: computedAreaSlug,
-          country: country.trim(),
-          region: region.trim(),
-          city: city.trim(),
-          postcode: postcode.trim().toUpperCase(),
-          budgetMin: budgetMin === "" ? null : Number(budgetMin),
-          budgetMax: budgetMax === "" ? null : Number(budgetMax),
-          currencyCode: "GBP",
-          locationType: "local",
+          country,
+          region,
+          city,
+          postcode: postcodePrefix,
+          postcodePrefix,
+          postcodeFull: postcodeFull.trim().toUpperCase() || null,
+          areaSlug,
+          budgetMin: minValue,
+          budgetMax: maxValue,
+          currencyCode,
+          locationType,
         }),
       });
 
-      const data = await res.json();
+      const result = await response.json();
 
-      if (!res.ok) {
-        throw new Error(data?.error || "Could not create job.");
+      if (!response.ok) {
+        setErrorMessage(result?.error || "Could not submit the job.");
+        return;
       }
 
-      setSuccessMessage(
-        data?.message || "Job submitted for review successfully."
-      );
-
-      setTitle("");
-      setDescription("");
-      setCountry(defaultCountry || "United Kingdom");
-      setRegion(defaultRegion || "Northern Ireland");
-      setCity(defaultCity || "");
-      setPostcode("");
-      setAreaSlug("");
-      setBudgetMin("");
-      setBudgetMax("");
+      setSuccessMessage("Job submitted successfully and is now awaiting review.");
 
       setTimeout(() => {
         router.push("/my-job-posts");
         router.refresh();
       }, 1200);
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Could not create job."
-      );
+      console.error("post job error:", error);
+      setErrorMessage("Could not submit the job.");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-8">
       {errorMessage ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {errorMessage}
@@ -190,175 +306,272 @@ export default function PostJobForm({
         </div>
       ) : null}
 
-      <div>
-        <label className="mb-2 block text-sm font-semibold text-slate-700">
-          Job title
-        </label>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={120}
-          placeholder="e.g. Need a plumber for kitchen sink repair"
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-      </div>
-
-      <div>
-        <label className="mb-2 block text-sm font-semibold text-slate-700">
-          Description
-        </label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={7}
-          maxLength={5000}
-          placeholder="Describe the work clearly, expected timing, materials, skills needed, and anything else useful."
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Country
-          </label>
-          <select
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {UK_COUNTRIES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Nation / region
-          </label>
-          <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Select region</option>
-            {regionOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            City / town
-          </label>
-          <input
-            type="text"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="e.g. Belfast"
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Postcode
-          </label>
-          <input
-            type="text"
-            value={postcode}
-            onChange={(e) => setPostcode(e.target.value.toUpperCase())}
-            placeholder="e.g. BT7 1NN"
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 uppercase text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-2 block text-sm font-semibold text-slate-700">
-          Internal area slug
-        </label>
-        <input
-          type="text"
-          value={areaSlug}
-          onChange={(e) => setAreaSlug(e.target.value)}
-          placeholder="Optional. Auto-generated if left blank."
-          className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-        <p className="mt-2 text-xs text-slate-500">
-          This is kept for compatibility with the current project. City and region
-          are now the main location fields.
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <h2 className="text-2xl font-bold text-slate-900">Job details</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Choose the type of work, then select a suitable title for the role.
         </p>
-      </div>
 
-      {areas.length > 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-800">
-            Existing area records detected
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Your project still supports legacy area data in the background. New
-            UK-ready job posts will primarily use country, region, city, and postcode.
-          </p>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Job category
+            </label>
+            <select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setSelectedTitle("");
+                setCustomTitle("");
+              }}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select category</option>
+              {Object.keys(JOB_OPTIONS).map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Job title
+            </label>
+            <select
+              value={selectedTitle}
+              onChange={(e) => setSelectedTitle(e.target.value)}
+              disabled={!category}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+            >
+              <option value="">
+                {category ? "Select title" : "Select category first"}
+              </option>
+              {titleOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
+        {selectedTitle === "Other" ? (
+          <div className="mt-4">
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Custom job title
+            </label>
+            <input
+              type="text"
+              value={customTitle}
+              onChange={(e) => setCustomTitle(e.target.value)}
+              placeholder="Enter your job title"
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        ) : null}
+
+        <div className="mt-4">
           <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Minimum budget
+            Job description
           </label>
-          <input
-            type="number"
-            value={budgetMin}
-            onChange={(e) => setBudgetMin(e.target.value)}
-            min="0"
-            step="0.01"
-            placeholder="e.g. 50"
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
+          <textarea
+            rows={6}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe the work clearly, including duties, timing, experience needed, and anything important the worker should know."
+            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
           />
         </div>
+      </section>
 
-        <div>
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <h2 className="text-2xl font-bold text-slate-900">Location</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Select the nation first, then choose the city and postcode prefix.
+        </p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Country
+            </label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="United Kingdom">United Kingdom</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Nation / region
+            </label>
+            <select
+              value={region}
+              onChange={(e) => {
+                setRegion(e.target.value);
+                setCity("");
+                setPostcodePrefix("");
+                setPostcodeFull("");
+              }}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select nation / region</option>
+              {regions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              City / town
+            </label>
+            <select
+              value={city}
+              onChange={(e) => {
+                setCity(e.target.value);
+                setPostcodePrefix("");
+                setPostcodeFull("");
+              }}
+              disabled={!region}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+            >
+              <option value="">
+                {region ? "Select city / town" : "Select region first"}
+              </option>
+              {cityOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Postcode prefix
+            </label>
+            <select
+              value={postcodePrefix}
+              onChange={(e) => setPostcodePrefix(e.target.value)}
+              disabled={!region || !city}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+            >
+              <option value="">
+                {city ? "Select postcode prefix" : "Select city first"}
+              </option>
+              {postcodePrefixOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4">
           <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Maximum budget
+            Full postcode (optional)
           </label>
           <input
-            type="number"
-            value={budgetMax}
-            onChange={(e) => setBudgetMax(e.target.value)}
-            min="0"
-            step="0.01"
-            placeholder="e.g. 150"
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500"
+            type="text"
+            value={postcodeFull}
+            onChange={(e) => setPostcodeFull(e.target.value.toUpperCase())}
+            placeholder="e.g. S1 2AB"
+            className="w-full rounded-2xl border border-slate-300 px-4 py-3 uppercase text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
           />
+          <p className="mt-2 text-xs text-slate-500">
+            Optional. The postcode prefix is enough for matching, while the full postcode gives a more exact area.
+          </p>
         </div>
-      </div>
+      </section>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <h2 className="text-2xl font-bold text-slate-900">Budget and work type</h2>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Minimum budget
+            </label>
+            <input
+              type="number"
+              value={budgetMin}
+              onChange={(e) => setBudgetMin(e.target.value)}
+              placeholder="e.g. 50"
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Maximum budget
+            </label>
+            <input
+              type="number"
+              value={budgetMax}
+              onChange={(e) => setBudgetMax(e.target.value)}
+              placeholder="e.g. 100"
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Currency
+            </label>
+            <select
+              value={currencyCode}
+              onChange={(e) => setCurrencyCode(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Work type
+            </label>
+            <select
+              value={locationType}
+              onChange={(e) => setLocationType(e.target.value)}
+              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="local">Local / on-site</option>
+              <option value="remote">Remote</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap justify-end gap-3">
         <button
           type="button"
-          onClick={() => router.push("/dashboard")}
-          className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+          onClick={() => router.back()}
+          className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
         >
           Cancel
         </button>
 
         <button
           type="submit"
-          disabled={!canSubmit}
-          className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={saving}
+          className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
         >
-          {submitting ? "Submitting..." : "Submit job for review"}
+          {saving ? "Submitting..." : "Submit job for review"}
         </button>
       </div>
     </form>

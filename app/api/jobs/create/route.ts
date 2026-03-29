@@ -38,28 +38,32 @@ export async function POST(req: Request) {
 
     const {
       data: { user },
-      error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await req.json();
 
+    const category = normalizeText(body?.category);
     const title = normalizeText(body?.title);
+    const titleSlug = normalizeText(body?.titleSlug);
     const description = normalizeText(body?.description);
 
     const country = normalizeText(body?.country) || "United Kingdom";
     const region = normalizeText(body?.region);
     const city = normalizeText(body?.city);
 
-    const postcodePrefix = normalizeUpperText(body?.postcodePrefix);
-    const postcodeFullRaw = normalizeUpperText(body?.postcodeFull);
-    const postcodeFull = postcodeFullRaw || null;
+    const postcode = normalizeUpperText(body?.postcode);
+    const postcodePrefix =
+      normalizeUpperText(body?.postcodePrefix) || postcode || "";
+
+    const postcodeFull = normalizeUpperText(body?.postcodeFull);
 
     const rawAreaSlug = normalizeText(body?.areaSlug);
-    const areaSlug = rawAreaSlug || slugifyArea(city || region || "united-kingdom");
+    const areaSlug =
+      rawAreaSlug || slugifyArea(city || region || "united-kingdom");
 
     const budgetMin =
       typeof body?.budgetMin === "number" ? body.budgetMin : null;
@@ -73,8 +77,18 @@ export async function POST(req: Request) {
     const locationType =
       normalizeText(body?.locationType) || "local";
 
+    if (!category) {
+      return NextResponse.json(
+        { error: "Job category is required." },
+        { status: 400 }
+      );
+    }
+
     if (!title) {
-      return NextResponse.json({ error: "Title is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Job title is required." },
+        { status: 400 }
+      );
     }
 
     if (!description) {
@@ -93,7 +107,7 @@ export async function POST(req: Request) {
 
     if (!region) {
       return NextResponse.json(
-        { error: "Region is required." },
+        { error: "Nation or region is required." },
         { status: 400 }
       );
     }
@@ -121,6 +135,26 @@ export async function POST(req: Request) {
 
     if (
       budgetMin != null &&
+      Number.isNaN(Number(budgetMin))
+    ) {
+      return NextResponse.json(
+        { error: "Minimum budget must be a valid number." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      budgetMax != null &&
+      Number.isNaN(Number(budgetMax))
+    ) {
+      return NextResponse.json(
+        { error: "Maximum budget must be a valid number." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      budgetMin != null &&
       budgetMax != null &&
       Number(budgetMin) > Number(budgetMax)
     ) {
@@ -132,7 +166,7 @@ export async function POST(req: Request) {
 
     const { data: hirerProfile, error: hirerProfileError } = await adminSupabase
       .from("hirer_profiles")
-      .select("id, user_id, company_name, contact_name")
+      .select("id, user_id, company_name, contact_name, industry")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -146,27 +180,46 @@ export async function POST(req: Request) {
     const now = new Date();
     const expiresAt = addDays(now, 30);
 
+    const finalPostcode =
+      postcodeFull || postcodePrefix || null;
+
+    const insertPayload: Record<string, unknown> = {
+      hirer_id: hirerProfile.id,
+      category,
+      title,
+      title_slug: titleSlug || null,
+      description,
+      area_slug: areaSlug,
+      country,
+      region,
+      city,
+      postcode: finalPostcode,
+      postcode_prefix: postcodePrefix,
+      postcode_full: postcodeFull || null,
+      budget_min: budgetMin,
+      budget_max: budgetMax,
+      currency_code: currencyCode,
+      location_type: locationType,
+      status: "pending",
+      visibility: "public",
+      expires_at: expiresAt.toISOString(),
+    };
+
     const { data: createdJob, error: createError } = await adminSupabase
       .from("jobs")
-      .insert({
-        hirer_id: hirerProfile.id,
+      .insert(insertPayload)
+      .select(`
+        id,
         title,
-        description,
-        area_slug: areaSlug,
+        status,
+        expires_at,
         country,
         region,
         city,
-        postcode_prefix: postcodePrefix,
-        postcode_full: postcodeFull,
-        budget_min: budgetMin,
-        budget_max: budgetMax,
-        currency_code: currencyCode,
-        location_type: locationType,
-        status: "pending",
-        visibility: "public",
-        expires_at: expiresAt.toISOString(),
-      })
-      .select("id, title, status, expires_at")
+        postcode,
+        postcode_prefix,
+        postcode_full
+      `)
       .single();
 
     if (createError || !createdJob) {
@@ -192,11 +245,14 @@ export async function POST(req: Request) {
           meta: {
             job_id: createdJob.id,
             hirer_user_id: user.id,
+            category,
+            title,
             country,
             region,
             city,
-            postcode_prefix: postcodePrefix,
-            postcode_full: postcodeFull,
+            postcode: createdJob.postcode,
+            postcode_prefix: createdJob.postcode_prefix,
+            postcode_full: createdJob.postcode_full,
             area_slug: areaSlug,
             expires_at: createdJob.expires_at,
           },
@@ -212,6 +268,11 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("jobs/create error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Server error",
+      },
+      { status: 500 }
+    );
   }
 }
