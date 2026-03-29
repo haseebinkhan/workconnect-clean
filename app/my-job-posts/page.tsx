@@ -580,3 +580,4 @@ export default async function MyJobPostsPage({
     </main>
   );
 }
+

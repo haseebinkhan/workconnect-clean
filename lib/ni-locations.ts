@@ -60,3 +60,4 @@ export function normalizeBTPrefix(value?: string | null) {
 
   return match ? match[0] : "";
 }
+

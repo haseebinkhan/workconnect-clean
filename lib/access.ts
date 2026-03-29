@@ -41,3 +41,4 @@ export function buildAccess(profile: AccessSourceProfile | null | undefined): Ac
     canReceiveRequests: isActive && workerEnabled,
   };
 }
+

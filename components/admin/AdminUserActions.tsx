@@ -11,7 +11,7 @@ export default function AdminUserAction({
   targetUserId: string;
   isActive: boolean;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const handleDeleteUser = async () => {
     const confirmDelete = confirm("Delete this user?");
@@ -42,3 +42,4 @@ export default function AdminUserAction({
     </button>
   );
 }
+

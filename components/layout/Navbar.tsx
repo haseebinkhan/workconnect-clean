@@ -29,7 +29,7 @@ export default function Navbar({
   hirerEnabled,
   isAdmin,
 }: Props) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -323,3 +323,4 @@ export default function Navbar({
     </header>
   );
 }
+

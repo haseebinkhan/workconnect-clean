@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function SignupPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -225,3 +225,4 @@ export default function SignupPage() {
     </main>
   );
 }
+

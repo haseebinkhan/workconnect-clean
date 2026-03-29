@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function LogoutButton() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -27,3 +27,4 @@ export default function LogoutButton() {
     </button>
   );
 }
+

@@ -142,3 +142,4 @@ export default async function WorkersPage() {
 
   return <WorkersSearchClient workers={workers} />;
 }
+

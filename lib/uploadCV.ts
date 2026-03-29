@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 export async function uploadCV(file: File, userId: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const fileExt = file.name.split(".").pop();
   const fileName = `${userId}-${Date.now()}.${fileExt}`;
@@ -24,3 +24,4 @@ export async function uploadCV(file: File, userId: string) {
 
   return data.publicUrl;
 }
+

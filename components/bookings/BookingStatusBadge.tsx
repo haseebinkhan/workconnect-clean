@@ -27,3 +27,4 @@ export default function BookingStatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+

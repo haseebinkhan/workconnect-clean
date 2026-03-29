@@ -47,3 +47,4 @@ export default function PresenceTracker() {
 
   return null;
 }
+

@@ -11,7 +11,7 @@ export default function ReportActions({
   reportId: string;
   currentStatus: string;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -71,3 +71,4 @@ export default function ReportActions({
     </div>
   );
 }
+

@@ -46,3 +46,4 @@ export default function MatchScoreBadge({ score }: Props) {
     </div>
   );
 }
+

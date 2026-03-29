@@ -5,7 +5,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -142,3 +142,4 @@ export default function ResetPasswordPage() {
     </main>
   );
 }
+

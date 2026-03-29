@@ -107,7 +107,7 @@ export default function ProfileForm({
   initialCountry: string;
   initialRegion: string;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const router = useRouter();
 
   const [fullName, setFullName] = useState(initialFullName);
@@ -667,3 +667,4 @@ export default function ProfileForm({
     </div>
   );
 }
+

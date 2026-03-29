@@ -13,7 +13,7 @@ export default function HireButton({
   workerUserId: string;
   areaSlug: string;
 }) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
@@ -155,3 +155,4 @@ export default function HireButton({
     </>
   );
 }
+

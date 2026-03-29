@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { buildAccess } from "@/lib/access";
 import { sendEmail } from "@/lib/email/send";
@@ -32,7 +32,7 @@ function safeIsoDate(value: string) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerClient();
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -299,3 +299,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

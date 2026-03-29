@@ -370,3 +370,4 @@ export default async function MyApplicationsPage() {
     </main>
   );
 }
+

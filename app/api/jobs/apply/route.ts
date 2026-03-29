@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { autoCloseExpiredJobs } from "@/lib/jobs/autoCloseExpiredJobs";
 
@@ -22,7 +22,7 @@ function normalizeDate(value: string) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerClient();
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -260,3 +260,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

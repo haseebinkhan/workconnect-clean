@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
-    const supabase = createServerClient();
+    const supabase = await createClient();
 
     const {
       data: { user },
@@ -38,3 +38,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

@@ -65,3 +65,4 @@ export type WorkerNamesMap = Record<
     longitude: number | null;
   }
 >;
+

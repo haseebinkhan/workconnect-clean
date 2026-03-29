@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
@@ -20,3 +20,4 @@ export async function GET() {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
+

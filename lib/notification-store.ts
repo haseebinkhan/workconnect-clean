@@ -29,3 +29,4 @@ export async function createNotification({
     is_read: false,
   });
 }
+

@@ -52,3 +52,4 @@ export const JOB_CATEGORIES = [
   "Cleaning Supervisor",
   "Warehouse Supervisor"
 ];
+
