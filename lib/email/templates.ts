@@ -241,3 +241,31 @@ export function bookingCancelledEmail({
     buttonUrl: "https://workconnect.uk/dashboard",
   });
 }
+
+export function newRegionalJobEmail({
+  userName,
+  jobTitle,
+  category,
+  location,
+  budget,
+}: {
+  userName: string;
+  jobTitle: string;
+  category: string;
+  location: string;
+  budget: string;
+}) {
+  return baseEmailLayout({
+    heading: "New job in your area",
+    greeting: `Hi ${userName},`,
+    intro: `A new job matching your region has just gone live on WorkConnect.`,
+    details: [
+      `<strong>Job:</strong> ${jobTitle}`,
+      `<strong>Category:</strong> ${category}`,
+      `<strong>Location:</strong> ${location}`,
+      `<strong>Budget:</strong> ${budget}`,
+    ],
+    buttonText: "Browse jobs",
+    buttonUrl: "https://workconnect.uk/jobs",
+  });
+}

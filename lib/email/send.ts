@@ -7,7 +7,7 @@ export async function sendEmail({
   subject,
   html,
 }: {
-  to: string;
+  to: string | string[]; // ✅ allow bulk emails
   subject: string;
   html: string;
 }) {
@@ -17,18 +17,33 @@ export async function sendEmail({
       return;
     }
 
-    const { error } = await resend.emails.send({
+    // normalize recipients
+    const recipients = Array.isArray(to) ? to : [to];
+
+    // remove invalid / empty emails
+    const cleanRecipients = recipients
+      .map((email) => (typeof email === "string" ? email.trim().toLowerCase() : ""))
+      .filter((email) => email.length > 3);
+
+    if (cleanRecipients.length === 0) {
+      console.error("No valid recipients");
+      return;
+    }
+
+    const { data, error } = await resend.emails.send({
       from: "WorkConnect <noreply@workconnect.uk>",
-      to,
+      to: cleanRecipients, // ✅ works for batch
       subject,
       html,
     });
 
     if (error) {
       console.error("Email error:", error);
+      return;
     }
+
+    console.log("Email sent:", data?.id || cleanRecipients.length);
   } catch (err) {
     console.error("Email send failed:", err);
   }
 }
-

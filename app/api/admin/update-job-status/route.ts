@@ -6,6 +6,7 @@ import {
   jobApprovedEmail,
   jobPausedEmail,
   jobRejectedEmail,
+  newRegionalJobEmail,
 } from "@/lib/email/templates";
 
 const adminSupabase = createAdminClient(
@@ -14,6 +15,8 @@ const adminSupabase = createAdminClient(
 );
 
 const ALLOWED_STATUSES = ["open", "paused", "rejected"] as const;
+const NOTIFICATION_BATCH_SIZE = 500;
+const EMAIL_BATCH_SIZE = 50;
 
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
 
@@ -23,6 +26,19 @@ function normalizeText(value: unknown) {
 
 function isAllowedStatus(value: string): value is AllowedStatus {
   return ALLOWED_STATUSES.includes(value as AllowedStatus);
+}
+
+function normalizeEmail(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase();
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
 }
 
 function buildLocationText({
@@ -64,6 +80,32 @@ function buildExpiry(daysFromNow: number) {
   const next = new Date();
   next.setDate(next.getDate() + daysFromNow);
   return next.toISOString();
+}
+
+function formatBudget({
+  min,
+  max,
+  currencyCode,
+}: {
+  min?: number | null;
+  max?: number | null;
+  currencyCode?: string | null;
+}) {
+  const currency = currencyCode || "GBP";
+
+  if (min != null && max != null) {
+    return `${currency} ${min} - ${max}`;
+  }
+
+  if (min != null) {
+    return `${currency} ${min}+`;
+  }
+
+  if (max != null) {
+    return `Up to ${currency} ${max}`;
+  }
+
+  return "Budget not specified";
 }
 
 export async function POST(req: Request) {
@@ -143,6 +185,9 @@ export async function POST(req: Request) {
         postcode_prefix,
         postcode_full,
         area_slug,
+        budget_min,
+        budget_max,
+        currency_code,
         deleted_at,
         expires_at
       `)
@@ -217,6 +262,12 @@ export async function POST(req: Request) {
       postcodeFull: job.postcode_full,
       postcode: job.postcode,
       areaSlug: job.area_slug,
+    });
+
+    const budgetText = formatBudget({
+      min: job.budget_min,
+      max: job.budget_max,
+      currencyCode: job.currency_code,
     });
 
     if (hirerProfile?.user_id) {
@@ -295,6 +346,80 @@ export async function POST(req: Request) {
               jobTitle: job.title || "Untitled job",
               reason: reason || "Please review your job post.",
             }),
+          });
+        }
+      }
+    }
+
+    if (status === "open" && job.region) {
+      const { data: matchedUsers } = await adminSupabase
+        .from("profiles")
+        .select("id, full_name, email, is_active, deleted_at, region")
+        .eq("region", job.region)
+        .eq("is_active", true)
+        .is("deleted_at", null);
+
+      const uniqueAudienceMap = new Map<
+        string,
+        { id: string; full_name: string | null; email: string }
+      >();
+
+      for (const item of matchedUsers || []) {
+        if (!item || item.id === hirerProfile?.user_id) continue;
+
+        const email = normalizeEmail(item.email);
+        if (!email) continue;
+
+        if (!uniqueAudienceMap.has(email)) {
+          uniqueAudienceMap.set(email, {
+            id: item.id,
+            full_name: item.full_name,
+            email,
+          });
+        }
+      }
+
+      const audience = Array.from(uniqueAudienceMap.values());
+
+      if (audience.length > 0) {
+        const notificationRows = audience.map((item) => ({
+          user_id: item.id,
+          type: "new_job_in_area",
+          title: "New job in your area",
+          body: `"${job.title || "Untitled job"}" is now live in ${job.region}.`,
+          meta: {
+            job_id: job.id,
+            title: job.title,
+            category: job.category,
+            region: job.region,
+            location: locationText,
+            budget: budgetText,
+            created_at: now,
+          },
+        }));
+
+        for (const batch of chunkArray(notificationRows, NOTIFICATION_BATCH_SIZE)) {
+          await adminSupabase.from("notifications").insert(batch);
+        }
+
+        const regionalEmailHtml = newRegionalJobEmail({
+          userName: "there",
+          jobTitle: job.title || "Untitled job",
+          category: job.category || "General",
+          location: locationText,
+          budget: budgetText,
+        });
+
+        const emailGroups = chunkArray(
+          audience.map((item) => item.email),
+          EMAIL_BATCH_SIZE
+        );
+
+        for (const emailBatch of emailGroups) {
+          await sendEmail({
+            to: emailBatch,
+            subject: `New WorkConnect job in ${job.region}`,
+            html: regionalEmailHtml,
           });
         }
       }
