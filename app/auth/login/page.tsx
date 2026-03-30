@@ -22,6 +22,12 @@ function LoginPageInner() {
   useEffect(() => {
     let mounted = true;
 
+    const timer = setTimeout(() => {
+      if (mounted) {
+        setCheckingSession(false);
+      }
+    }, 2500);
+
     async function checkSession() {
       try {
         const {
@@ -65,6 +71,7 @@ function LoginPageInner() {
 
     return () => {
       mounted = false;
+      clearTimeout(timer);
       subscription.unsubscribe();
     };
   }, [redirectTarget, supabase]);
@@ -158,74 +165,11 @@ function LoginPageInner() {
                 Access your dashboard, saved workers, messages, bookings, and
                 hiring activity in one place across Northern Ireland.
               </p>
-
-              <div className="mt-8 grid gap-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Find trusted local workers
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-slate-300">
-                    Search by area, BT postcode, category, and availability.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Manage requests with confidence
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-slate-300">
-                    Chat, schedule meetings, and track work progress clearly.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <p className="text-sm font-semibold text-white">
-                    Build trust through reviews
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-slate-300">
-                    Verified activity, ratings, and structured workflows.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative grid gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                <p className="text-sm font-semibold">Dashboard</p>
-                <p className="mt-1 text-xs text-slate-300">
-                  Organize everything in one place.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                <p className="text-sm font-semibold">Messages</p>
-                <p className="mt-1 text-xs text-slate-300">
-                  Continue chats and requests quickly.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                <p className="text-sm font-semibold">Opportunities</p>
-                <p className="mt-1 text-xs text-slate-300">
-                  Hire or work locally with confidence.
-                </p>
-              </div>
             </div>
           </div>
 
           <div className="relative p-6 sm:p-8 lg:p-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.08),transparent_35%)]" />
-
             <div className="relative mx-auto w-full max-w-md">
-              <div className="mb-6 lg:hidden">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-lg font-bold text-white shadow-lg">
-                  W
-                </div>
-                <p className="mt-4 text-sm font-medium text-slate-500">
-                  WorkConnect
-                </p>
-              </div>
-
               <p className="text-sm font-medium text-slate-500">Account access</p>
 
               <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
@@ -305,11 +249,6 @@ function LoginPageInner() {
                 >
                   {loading ? "Signing in..." : "Sign in"}
                 </button>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-500">
-                  By signing in, you can manage worker discovery, requests,
-                  bookings, and local job activity from one place.
-                </div>
 
                 <div className="text-center text-sm text-slate-600">
                   Don&apos;t have an account?{" "}
