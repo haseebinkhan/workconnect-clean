@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/send";
+import { enqueueEmails } from "@/lib/email/queue";
 import {
   jobApprovedEmail,
   jobPausedEmail,
@@ -16,7 +17,6 @@ const adminSupabase = createAdminClient(
 
 const ALLOWED_STATUSES = ["open", "paused", "rejected"] as const;
 const NOTIFICATION_BATCH_SIZE = 500;
-const EMAIL_BATCH_SIZE = 50;
 
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
 
@@ -410,18 +410,21 @@ export async function POST(req: Request) {
           budget: budgetText,
         });
 
-        const emailGroups = chunkArray(
-          audience.map((item) => item.email),
-          EMAIL_BATCH_SIZE
-        );
-
-        for (const emailBatch of emailGroups) {
-          await sendEmail({
-            to: emailBatch,
+        await enqueueEmails(
+          audience.map((item) => ({
+            kind: "new_job_in_area",
+            toEmail: item.email,
             subject: `New WorkConnect job in ${job.region}`,
             html: regionalEmailHtml,
-          });
-        }
+            meta: {
+              job_id: job.id,
+              region: job.region,
+              category: job.category || "General",
+              location: locationText,
+              budget: budgetText,
+            },
+          }))
+        );
       }
     }
 
