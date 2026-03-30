@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { sendEmail } from "@/lib/email/send";
+import {
+  bookingAcceptedEmail,
+  bookingCancelledEmail,
+} from "@/lib/email/templates";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +19,24 @@ function normalizeAction(value: unknown): ActionType | null {
   const v = value.trim().toLowerCase();
   if (v === "accepted" || v === "cancelled") return v;
   return null;
+}
+
+function buildLocationText({
+  country,
+  region,
+  city,
+  postcode,
+  areaSlug,
+}: {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  areaSlug?: string | null;
+}) {
+  const parts = [city, region, country].filter(Boolean);
+  const base = parts.join(", ");
+  return base || postcode || areaSlug || "Location not specified";
 }
 
 export async function POST(req: Request) {
@@ -41,6 +64,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const now = new Date().toISOString();
+
     const { data: booking, error: bookingError } = await adminSupabase
       .from("bookings")
       .select(`
@@ -49,7 +74,12 @@ export async function POST(req: Request) {
         status,
         hirer_user_id,
         worker_user_id,
-        deleted_at
+        deleted_at,
+        country,
+        region,
+        city,
+        postcode,
+        area_slug
       `)
       .eq("id", bookingId)
       .maybeSingle();
@@ -64,6 +94,26 @@ export async function POST(req: Request) {
     if (!isWorker && !isHirer) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
+
+    const { data: hirerAccount } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", booking.hirer_user_id)
+      .maybeSingle();
+
+    const { data: workerAccount } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", booking.worker_user_id)
+      .maybeSingle();
+
+    const locationText = buildLocationText({
+      country: booking.country,
+      region: booking.region,
+      city: booking.city,
+      postcode: booking.postcode,
+      areaSlug: booking.area_slug,
+    });
 
     if (booking.status === "completed" || booking.status === "in_progress") {
       return NextResponse.json(
@@ -93,7 +143,7 @@ export async function POST(req: Request) {
           status: "accepted",
           seen_by_worker: true,
           seen_by_hirer: false,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
         })
         .eq("id", booking.id);
 
@@ -113,6 +163,8 @@ export async function POST(req: Request) {
           meta: {
             booking_id: booking.id,
             status: "accepted",
+            location: locationText,
+            updated_at: now,
           },
         },
         {
@@ -123,9 +175,35 @@ export async function POST(req: Request) {
           meta: {
             booking_id: booking.id,
             status: "accepted",
+            location: locationText,
+            updated_at: now,
           },
         },
       ]);
+
+      if (hirerAccount?.email) {
+        await sendEmail({
+          to: hirerAccount.email,
+          subject: "Your WorkConnect booking was accepted",
+          html: bookingAcceptedEmail({
+            userName: hirerAccount.full_name || "there",
+            bookingTitle: booking.title || "Booking",
+            location: locationText,
+          }),
+        });
+      }
+
+      if (workerAccount?.email) {
+        await sendEmail({
+          to: workerAccount.email,
+          subject: "You accepted a WorkConnect booking",
+          html: bookingAcceptedEmail({
+            userName: workerAccount.full_name || "there",
+            bookingTitle: booking.title || "Booking",
+            location: locationText,
+          }),
+        });
+      }
 
       return NextResponse.json({
         success: true,
@@ -147,7 +225,7 @@ export async function POST(req: Request) {
         status: "cancelled",
         seen_by_worker: isWorker,
         seen_by_hirer: isHirer,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("id", booking.id);
 
@@ -158,18 +236,55 @@ export async function POST(req: Request) {
       );
     }
 
-    const notifyUserId = isWorker ? booking.hirer_user_id : booking.worker_user_id;
+    const notifyUserId = isWorker
+      ? booking.hirer_user_id
+      : booking.worker_user_id;
 
-    await adminSupabase.from("notifications").insert({
-      user_id: notifyUserId,
-      type: "worker_request_cancelled",
-      title: "Request cancelled",
-      body: `The request "${booking.title}" was cancelled.`,
-      meta: {
-        booking_id: booking.id,
-        status: "cancelled",
+    const notifyUser = isWorker ? hirerAccount : workerAccount;
+    const actorName = isWorker
+      ? workerAccount?.full_name || "Worker"
+      : hirerAccount?.full_name || "Hirer";
+
+    await adminSupabase.from("notifications").insert([
+      {
+        user_id: notifyUserId,
+        type: "worker_request_cancelled",
+        title: "Request cancelled",
+        body: `The request "${booking.title}" was cancelled.`,
+        meta: {
+          booking_id: booking.id,
+          status: "cancelled",
+          cancelled_by: user.id,
+          cancelled_by_name: actorName,
+          location: locationText,
+          updated_at: now,
+        },
       },
-    });
+      {
+        user_id: user.id,
+        type: "worker_request_status",
+        title: "You cancelled a request",
+        body: `You cancelled "${booking.title}".`,
+        meta: {
+          booking_id: booking.id,
+          status: "cancelled",
+          location: locationText,
+          updated_at: now,
+        },
+      },
+    ]);
+
+    if (notifyUser?.email) {
+      await sendEmail({
+        to: notifyUser.email,
+        subject: "A WorkConnect booking was cancelled",
+        html: bookingCancelledEmail({
+          userName: notifyUser.full_name || "there",
+          bookingTitle: booking.title || "Booking",
+          location: locationText,
+        }),
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -181,4 +296,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
-

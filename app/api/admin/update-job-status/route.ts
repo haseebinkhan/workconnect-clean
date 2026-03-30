@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { sendEmail } from "@/lib/email/send";
+import {
+  jobApprovedEmail,
+  jobPausedEmail,
+  jobRejectedEmail,
+} from "@/lib/email/templates";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -147,8 +153,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    const nextVisibility =
-      status === "open" ? "public" : status === "paused" ? "private" : "private";
+    const nextVisibility = status === "open" ? "public" : "private";
 
     let nextExpiresAt = job.expires_at;
     if (status === "open" && !nextExpiresAt) {
@@ -196,6 +201,14 @@ export async function POST(req: Request) {
       .eq("id", job.hirer_id)
       .maybeSingle();
 
+    const { data: hirerAccount } = hirerProfile?.user_id
+      ? await adminSupabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .eq("id", hirerProfile.user_id)
+          .maybeSingle()
+      : { data: null };
+
     const locationText = buildLocationText({
       country: job.country,
       region: job.region,
@@ -242,6 +255,49 @@ export async function POST(req: Request) {
           postcode_full: job.postcode_full || null,
         },
       });
+
+      if (hirerAccount?.email) {
+        const hirerName =
+          hirerAccount.full_name ||
+          hirerProfile.company_name ||
+          hirerProfile.contact_name ||
+          "there";
+
+        if (status === "open") {
+          await sendEmail({
+            to: hirerAccount.email,
+            subject: "Your WorkConnect job is now live",
+            html: jobApprovedEmail({
+              hirerName,
+              jobTitle: job.title || "Untitled job",
+            }),
+          });
+        }
+
+        if (status === "paused") {
+          await sendEmail({
+            to: hirerAccount.email,
+            subject: "Your WorkConnect job has been paused",
+            html: jobPausedEmail({
+              hirerName,
+              jobTitle: job.title || "Untitled job",
+              reason: reason || "Please review your job post.",
+            }),
+          });
+        }
+
+        if (status === "rejected") {
+          await sendEmail({
+            to: hirerAccount.email,
+            subject: "Your WorkConnect job was not approved",
+            html: jobRejectedEmail({
+              hirerName,
+              jobTitle: job.title || "Untitled job",
+              reason: reason || "Please review your job post.",
+            }),
+          });
+        }
+      }
     }
 
     return NextResponse.json({
