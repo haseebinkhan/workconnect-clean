@@ -13,9 +13,9 @@ type DashboardCard = {
   tone?: "default" | "worker" | "hirer" | "neutral";
 };
 
-type SearchParamsType = Promise<{
+type SearchParamsType = {
   mode?: string;
-}>;
+};
 
 function cardToneClass(tone?: DashboardCard["tone"]) {
   if (tone === "worker") return "border-emerald-200 bg-emerald-50";
@@ -29,7 +29,7 @@ export default async function DashboardPage({
 }: {
   searchParams?: SearchParamsType;
 }) {
-  const params = (await searchParams) || {};
+  const params = searchParams || {};
   const requestedMode = typeof params.mode === "string" ? params.mode : "all";
 
   const supabase = await createClient();
@@ -57,8 +57,56 @@ export default async function DashboardPage({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profileError || !profile) {
-    redirect("/profile");
+  if (profileError) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+        <section className="mx-auto max-w-6xl">
+          <div className="rounded-[2rem] border border-red-200 bg-white p-8 shadow-sm">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              Dashboard
+            </h1>
+            <p className="mt-3 text-sm text-red-600">
+              We could not load your account profile right now.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+        <section className="mx-auto max-w-6xl">
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-sm font-medium text-slate-500">Dashboard</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+              Welcome to WorkConnect
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
+              Your account has been verified, but your profile is not ready yet.
+              Please complete your profile to continue.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/profile"
+                className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+              >
+                Complete profile
+              </Link>
+
+              <Link
+                href="/jobs"
+                className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+              >
+                Browse jobs
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   if (!profile.is_active) {
@@ -463,5 +511,4 @@ export default async function DashboardPage({
       </section>
     </main>
   );
-}
-
+} check all relevant files and tell reason first login 404 after verification. no need to write code until you are sure.
