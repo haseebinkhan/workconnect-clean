@@ -7,13 +7,17 @@ const adminSupabase = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-type ActionType = "accepted" | "cancelled";
+type ActionType = "accepted" | "rejected";
 
 function normalizeAction(value: unknown): ActionType | null {
   if (typeof value !== "string") return null;
   const v = value.trim().toLowerCase();
-  if (v === "accepted" || v === "cancelled") return v;
+  if (v === "accepted" || v === "rejected") return v;
   return null;
+}
+
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function buildLocationText({
@@ -21,17 +25,34 @@ function buildLocationText({
   region,
   city,
   postcode,
+  postcodePrefix,
+  postcodeFull,
   areaSlug,
 }: {
   country?: string | null;
   region?: string | null;
   city?: string | null;
   postcode?: string | null;
+  postcodePrefix?: string | null;
+  postcodeFull?: string | null;
   areaSlug?: string | null;
 }) {
   const parts = [city, region, country].filter(Boolean);
   const base = parts.join(", ");
-  return base || postcode || areaSlug || "Location not specified";
+
+  if (postcodeFull) {
+    return base ? `${base} (${postcodeFull})` : postcodeFull;
+  }
+
+  if (postcodePrefix) {
+    return base ? `${base} (${postcodePrefix})` : postcodePrefix;
+  }
+
+  if (postcode) {
+    return base ? `${base} (${postcode})` : postcode;
+  }
+
+  return base || areaSlug || "Location not specified";
 }
 
 export async function POST(req: Request) {
@@ -43,248 +64,360 @@ export async function POST(req: Request) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
     const body = await req.json();
-    const bookingId =
-      typeof body?.bookingId === "string" ? body.bookingId.trim() : "";
+
+    const applicationId = normalizeText(body?.applicationId);
     const action = normalizeAction(body?.action);
 
-    if (!bookingId || !action) {
+    if (!applicationId || !action) {
       return NextResponse.json(
-        { error: "Missing bookingId or action." },
+        { error: "Missing applicationId or action." },
         { status: 400 }
       );
     }
 
     const now = new Date().toISOString();
 
-    const { data: booking, error: bookingError } = await adminSupabase
-      .from("bookings")
-      .select(
-        `
+    const { data: application, error: applicationError } = await adminSupabase
+      .from("job_applications")
+      .select(`
         id,
-        title,
-        message,
-        status,
-        country,
-        region,
-        city,
-        postcode,
-        area_slug,
-        budget_amount,
+        job_id,
+        worker_id,
+        cover_message,
+        proposed_rate,
         currency_code,
-        preferred_meeting_at,
-        hirer_user_id,
-        worker_user_id,
-        deleted_at
-      `
-      )
-      .eq("id", bookingId)
+        status,
+        created_at,
+        updated_at,
+        phone,
+        availability_type,
+        start_date,
+        portfolio_url,
+        linkedin_url,
+        cv_url
+      `)
+      .eq("id", applicationId)
       .maybeSingle();
 
-    if (bookingError || !booking || booking.deleted_at) {
-      return NextResponse.json({ error: "Request not found." }, { status: 404 });
-    }
-
-    const isWorker = booking.worker_user_id === user.id;
-    const isHirer = booking.hirer_user_id === user.id;
-
-    if (!isWorker && !isHirer) {
-      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
-    }
-
-    const { data: hirerProfile } = await adminSupabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("id", booking.hirer_user_id)
-      .maybeSingle();
-
-    const { data: workerProfile } = await adminSupabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("id", booking.worker_user_id)
-      .maybeSingle();
-
-    const locationText = buildLocationText({
-      country: booking.country,
-      region: booking.region,
-      city: booking.city,
-      postcode: booking.postcode,
-      areaSlug: booking.area_slug,
-    });
-
-    if (booking.status === "completed" || booking.status === "in_progress") {
+    if (applicationError || !application) {
       return NextResponse.json(
-        { error: "This request can no longer be changed here." },
+        { error: "Application not found." },
+        { status: 404 }
+      );
+    }
+
+    if (application.status !== "pending") {
+      return NextResponse.json(
+        { error: `This application is already ${application.status}.` },
         { status: 409 }
       );
     }
 
-    if (action === "accepted") {
-      if (!isWorker) {
-        return NextResponse.json(
-          { error: "Only the worker can accept this request." },
-          { status: 403 }
-        );
-      }
+    const { data: workerProfile, error: workerProfileError } = await adminSupabase
+      .from("worker_profiles")
+      .select(`
+        id,
+        user_id,
+        headline,
+        category,
+        country,
+        region,
+        city,
+        area_slug,
+        postcode,
+        postcode_prefix,
+        postcode_full,
+        hourly_rate
+      `)
+      .eq("id", application.worker_id)
+      .maybeSingle();
 
-      if (booking.status !== "pending") {
-        return NextResponse.json(
-          { error: "Only pending requests can be accepted." },
-          { status: 409 }
-        );
-      }
+    if (workerProfileError || !workerProfile) {
+      return NextResponse.json(
+        { error: "Worker profile not found." },
+        { status: 404 }
+      );
+    }
 
-      const { error: updateError } = await adminSupabase
-        .from("bookings")
+    const { data: job, error: jobError } = await adminSupabase
+      .from("jobs")
+      .select(`
+        id,
+        hirer_id,
+        title,
+        description,
+        category,
+        status,
+        visibility,
+        location_type,
+        country,
+        region,
+        city,
+        area_slug,
+        postcode,
+        postcode_prefix,
+        postcode_full,
+        budget_min,
+        budget_max,
+        currency_code,
+        deleted_at
+      `)
+      .eq("id", application.job_id)
+      .maybeSingle();
+
+    if (jobError || !job || job.deleted_at) {
+      return NextResponse.json({ error: "Job not found." }, { status: 404 });
+    }
+
+    const { data: hirerProfile, error: hirerProfileError } = await adminSupabase
+      .from("hirer_profiles")
+      .select(`
+        id,
+        user_id,
+        company_name,
+        contact_name
+      `)
+      .eq("id", job.hirer_id)
+      .maybeSingle();
+
+    if (hirerProfileError || !hirerProfile) {
+      return NextResponse.json(
+        { error: "Hirer profile not found." },
+        { status: 404 }
+      );
+    }
+
+    if (hirerProfile.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    const workerLocation = buildLocationText({
+      country: workerProfile.country,
+      region: workerProfile.region,
+      city: workerProfile.city,
+      postcode: workerProfile.postcode,
+      postcodePrefix: workerProfile.postcode_prefix,
+      postcodeFull: workerProfile.postcode_full,
+      areaSlug: workerProfile.area_slug,
+    });
+
+    const jobLocation = buildLocationText({
+      country: job.country,
+      region: job.region,
+      city: job.city,
+      postcode: job.postcode,
+      postcodePrefix: job.postcode_prefix,
+      postcodeFull: job.postcode_full,
+      areaSlug: job.area_slug,
+    });
+
+    if (action === "rejected") {
+      const { error: rejectError } = await adminSupabase
+        .from("job_applications")
         .update({
-          status: "accepted",
-          seen_by_worker: true,
-          seen_by_hirer: false,
+          status: "rejected",
+          seen_by_hirer: true,
+          seen_by_worker: false,
           updated_at: now,
         })
-        .eq("id", booking.id);
+        .eq("id", application.id);
 
-      if (updateError) {
+      if (rejectError) {
         return NextResponse.json(
-          { error: updateError.message },
+          { error: rejectError.message || "Could not reject application." },
           { status: 400 }
         );
       }
 
-      const acceptedMessageParts = [
-        `The request "${booking.title || "Work request"}" was accepted.`,
-        booking.preferred_meeting_at
-          ? `Meeting time: ${new Date(booking.preferred_meeting_at).toLocaleString("en-GB")}.`
-          : "",
-        `Location: ${locationText}.`,
-        booking.budget_amount != null
-          ? `Budget: ${booking.currency_code || "GBP"} ${booking.budget_amount}.`
-          : "",
-      ].filter(Boolean);
-
-      const { error: messageError } = await adminSupabase.from("messages").insert({
-        booking_id: booking.id,
-        sender_id: booking.worker_user_id,
-        receiver_id: booking.hirer_user_id,
-        content: acceptedMessageParts.join(" "),
-        is_read: false,
-        delivered: false,
-      });
-
-      if (messageError) {
-        console.error("booking accepted message insert error:", messageError);
-      }
-
       await adminSupabase.from("notifications").insert([
         {
-          user_id: booking.hirer_user_id,
-          type: "worker_request_accepted",
-          title: "Request accepted",
-          body: `Your request "${booking.title}" was accepted.`,
+          user_id: workerProfile.user_id,
+          type: "job_application_rejected",
+          title: "Application rejected",
+          body: `Your application for "${job.title || "Untitled job"}" was rejected.`,
           meta: {
-            booking_id: booking.id,
-            status: "accepted",
-            worker_user_id: booking.worker_user_id,
-            worker_name: workerProfile?.full_name || "Worker",
-            location: locationText,
-            updated_at: now,
+            application_id: application.id,
+            job_id: job.id,
+            status: "rejected",
+            reviewed_at: now,
+            hirer_user_id: hirerProfile.user_id,
+            hirer_name:
+              hirerProfile.company_name || hirerProfile.contact_name || "Hirer",
+            job_title: job.title,
+            job_location: jobLocation,
           },
         },
         {
-          user_id: booking.worker_user_id,
-          type: "worker_request_status",
-          title: "You accepted a request",
-          body: `You accepted "${booking.title}".`,
+          user_id: hirerProfile.user_id,
+          type: "job_application_status_changed",
+          title: "Application rejected",
+          body: `You rejected an application for "${job.title || "Untitled job"}".`,
           meta: {
-            booking_id: booking.id,
-            status: "accepted",
-            hirer_user_id: booking.hirer_user_id,
-            hirer_name: hirerProfile?.full_name || "Hirer",
-            location: locationText,
-            updated_at: now,
+            application_id: application.id,
+            job_id: job.id,
+            status: "rejected",
+            reviewed_at: now,
+            worker_user_id: workerProfile.user_id,
+            worker_profile_id: workerProfile.id,
           },
         },
       ]);
 
       return NextResponse.json({
         success: true,
-        status: "accepted",
-        message: "Request accepted successfully.",
+        status: "rejected",
+        message: "Application rejected successfully.",
       });
     }
 
-    if (booking.status === "cancelled") {
-      return NextResponse.json(
-        { error: "This request is already cancelled." },
-        { status: 409 }
-      );
-    }
-
-    const { error: cancelError } = await adminSupabase
-      .from("bookings")
+    const { error: acceptError } = await adminSupabase
+      .from("job_applications")
       .update({
-        status: "cancelled",
-        seen_by_worker: isWorker ? true : false,
-        seen_by_hirer: isHirer ? true : false,
+        status: "accepted",
+        seen_by_hirer: true,
+        seen_by_worker: false,
         updated_at: now,
       })
-      .eq("id", booking.id);
+      .eq("id", application.id);
 
-    if (cancelError) {
+    if (acceptError) {
       return NextResponse.json(
-        { error: cancelError.message },
+        { error: acceptError.message || "Could not accept application." },
         { status: 400 }
       );
     }
 
-    const notifyUserId = isWorker ? booking.hirer_user_id : booking.worker_user_id;
-    const cancellerName = isWorker
-      ? workerProfile?.full_name || "Worker"
-      : hirerProfile?.full_name || "Hirer";
+    await adminSupabase
+      .from("job_applications")
+      .update({
+        status: "rejected",
+        seen_by_hirer: true,
+        seen_by_worker: false,
+        updated_at: now,
+      })
+      .eq("job_id", job.id)
+      .neq("id", application.id)
+      .eq("status", "pending");
 
-    const cancelMessageParts = [
-      `The request "${booking.title || "Work request"}" was cancelled by ${cancellerName}.`,
-      `Location: ${locationText}.`,
-    ].filter(Boolean);
+    const bookingTitle = job.title || "Job booking";
+    const bookingMessage =
+      application.cover_message ||
+      `Booking created from accepted application for "${job.title || "Untitled job"}".`;
 
-    const { error: messageError } = await adminSupabase.from("messages").insert({
-      booking_id: booking.id,
-      sender_id: user.id,
-      receiver_id: notifyUserId,
-      content: cancelMessageParts.join(" "),
-      is_read: false,
-      delivered: false,
-    });
+    const bookingBudget =
+      application.proposed_rate ??
+      job.budget_max ??
+      job.budget_min ??
+      workerProfile.hourly_rate ??
+      null;
 
-    if (messageError) {
-      console.error("booking cancelled message insert error:", messageError);
+    const { data: booking, error: bookingError } = await adminSupabase
+      .from("bookings")
+      .insert({
+        hirer_user_id: hirerProfile.user_id,
+        worker_user_id: workerProfile.user_id,
+        job_id: job.id,
+        worker_profile_id: workerProfile.id,
+        title: bookingTitle,
+        message: bookingMessage,
+        budget_amount: bookingBudget,
+        currency_code: application.currency_code || job.currency_code || "GBP",
+        start_date: application.start_date || null,
+        location_type: job.location_type || "local",
+        country: job.country || null,
+        region: job.region || null,
+        city: job.city || null,
+        area_slug: job.area_slug || null,
+        postcode: job.postcode_full || job.postcode || null,
+        status: "accepted",
+        seen_by_hirer: true,
+        seen_by_worker: false,
+        updated_at: now,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (bookingError) {
+      return NextResponse.json(
+        { error: bookingError.message || "Application accepted but booking creation failed." },
+        { status: 400 }
+      );
     }
 
-    await adminSupabase.from("notifications").insert({
-      user_id: notifyUserId,
-      type: "worker_request_cancelled",
-      title: "Request cancelled",
-      body: `The request "${booking.title}" was cancelled.`,
-      meta: {
-        booking_id: booking.id,
-        status: "cancelled",
-        cancelled_by: user.id,
-        cancelled_by_name: cancellerName,
-        location: locationText,
+    await adminSupabase
+      .from("jobs")
+      .update({
+        status: "closed",
+        visibility: "private",
         updated_at: now,
+      })
+      .eq("id", job.id);
+
+    if (booking?.id) {
+      await adminSupabase.from("messages").insert([
+        {
+          booking_id: booking.id,
+          sender_id: hirerProfile.user_id,
+          receiver_id: workerProfile.user_id,
+          content: `Your application for "${job.title || "Untitled job"}" was accepted. A booking has been created.`,
+          is_read: false,
+          delivered: false,
+        },
+      ]);
+    }
+
+    await adminSupabase.from("notifications").insert([
+      {
+        user_id: workerProfile.user_id,
+        type: "job_application_accepted",
+        title: "Application accepted",
+        body: `Your application for "${job.title || "Untitled job"}" was accepted.`,
+        meta: {
+          application_id: application.id,
+          job_id: job.id,
+          booking_id: booking?.id || null,
+          status: "accepted",
+          reviewed_at: now,
+          hirer_user_id: hirerProfile.user_id,
+          hirer_name:
+            hirerProfile.company_name || hirerProfile.contact_name || "Hirer",
+          job_title: job.title,
+          job_location: jobLocation,
+          worker_location: workerLocation,
+        },
       },
-    });
+      {
+        user_id: hirerProfile.user_id,
+        type: "job_application_status_changed",
+        title: "Application accepted",
+        body: `You accepted an application for "${job.title || "Untitled job"}".`,
+        meta: {
+          application_id: application.id,
+          job_id: job.id,
+          booking_id: booking?.id || null,
+          status: "accepted",
+          reviewed_at: now,
+          worker_user_id: workerProfile.user_id,
+          worker_profile_id: workerProfile.id,
+        },
+      },
+    ]);
 
     return NextResponse.json({
       success: true,
-      status: "cancelled",
-      message: "Request cancelled successfully.",
+      status: "accepted",
+      bookingId: booking?.id || null,
+      message: "Application accepted successfully.",
     });
   } catch (error) {
-    console.error("bookings/update-status error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    console.error("jobs/applications/update-status error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Server error." },
+      { status: 500 }
+    );
   }
 }
