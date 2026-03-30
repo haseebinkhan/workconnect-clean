@@ -511,4 +511,4 @@ export default async function DashboardPage({
       </section>
     </main>
   );
-} check all relevant files and tell reason first login 404 after verification. no need to write code until you are sure.
+} 
