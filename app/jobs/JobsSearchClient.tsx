@@ -140,7 +140,9 @@ function getRecommendationScore(
   const workerCity = (workerDefaults.city || "").trim().toLowerCase();
   const jobCity = (job.city || "").trim().toLowerCase();
 
-  const workerPrefix = (workerDefaults.postcodePrefix || "").trim().toUpperCase();
+  const workerPrefix = (workerDefaults.postcodePrefix || "")
+    .trim()
+    .toUpperCase();
   const jobPrefix = getEffectivePostcodePrefix(job).trim().toUpperCase();
 
   if (workerCategory && jobCategory && workerCategory === jobCategory) {
@@ -169,12 +171,10 @@ export default function JobsSearchClient({
   const regions = useMemo(() => getRegions(), []);
 
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState(workerDefaults?.category || "");
-  const [region, setRegion] = useState(workerDefaults?.region || "");
-  const [city, setCity] = useState(workerDefaults?.city || "");
-  const [postcodePrefix, setPostcodePrefix] = useState(
-    workerDefaults?.postcodePrefix || ""
-  );
+  const [category, setCategory] = useState("");
+  const [region, setRegion] = useState("");
+  const [city, setCity] = useState("");
+  const [postcodePrefix, setPostcodePrefix] = useState("");
   const [locationType, setLocationType] = useState("");
   const [budgetMin, setBudgetMin] = useState("");
   const [budgetMax, setBudgetMax] = useState("");
@@ -282,10 +282,10 @@ export default function JobsSearchClient({
 
   function resetFilters() {
     setSearch("");
-    setCategory(workerDefaults?.category || "");
-    setRegion(workerDefaults?.region || "");
-    setCity(workerDefaults?.city || "");
-    setPostcodePrefix(workerDefaults?.postcodePrefix || "");
+    setCategory("");
+    setRegion("");
+    setCity("");
+    setPostcodePrefix("");
     setLocationType("");
     setBudgetMin("");
     setBudgetMax("");
