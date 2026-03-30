@@ -12,7 +12,7 @@ function formatDateTime(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString([], {
+  return date.toLocaleString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -73,10 +73,36 @@ function formatLocation({
 }) {
   const parts = [city, region, country].filter(Boolean);
   if (parts.length > 0) return parts.join(", ");
-  if (postcodePrefix) return postcodePrefix;
   if (postcodeFull) return postcodeFull;
+  if (postcodePrefix) return postcodePrefix;
   if (areaSlug) return areaSlug;
   return "Local area";
+}
+
+function formatBudget({
+  currencyCode,
+  min,
+  max,
+}: {
+  currencyCode?: string | null;
+  min?: number | null;
+  max?: number | null;
+}) {
+  const currency = currencyCode || "GBP";
+
+  if (min != null && max != null) {
+    return `${currency} ${min} - ${max}`;
+  }
+
+  if (min != null) {
+    return `${currency} ${min}+`;
+  }
+
+  if (max != null) {
+    return `Up to ${currency} ${max}`;
+  }
+
+  return "Not specified";
 }
 
 export default async function MyJobPostsPage({
@@ -131,9 +157,11 @@ export default async function MyJobPostsPage({
     .from("jobs")
     .select(`
       id,
+      category,
       title,
       description,
       status,
+      visibility,
       budget_min,
       budget_max,
       currency_code,
@@ -146,6 +174,7 @@ export default async function MyJobPostsPage({
       area_slug,
       created_at,
       updated_at,
+      expires_at,
       deleted_at
     `)
     .eq("hirer_id", hirerProfile.id)
@@ -255,7 +284,8 @@ export default async function MyJobPostsPage({
                 My job posts
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
-                Review applications with both the worker profile and the application details.
+                Review your jobs, track their approval status, and manage worker
+                applications from one place.
               </p>
             </div>
 
@@ -307,21 +337,36 @@ export default async function MyJobPostsPage({
                   }`}
                 >
                   <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-2xl font-bold text-slate-900">{job.title}</h2>
+                    <h2 className="text-2xl font-bold text-slate-900">
+                      {job.title || "Untitled job"}
+                    </h2>
+
+                    {job.category ? (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {job.category}
+                      </span>
+                    ) : null}
+
                     <span
                       className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${jobStatusClasses(
                         job.status
                       )}`}
                     >
-                      {job.status}
+                      {job.status || "unknown"}
                     </span>
+
+                    {job.visibility ? (
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {job.visibility}
+                      </span>
+                    ) : null}
                   </div>
 
                   <p className="mt-3 text-sm leading-7 text-slate-600">
                     {compactText(job.description, 260) || "No description provided."}
                   </p>
 
-                  <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
                     <div className="rounded-2xl bg-slate-50 p-4">
                       <p className="text-sm text-slate-500">Location</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">
@@ -344,11 +389,11 @@ export default async function MyJobPostsPage({
                     <div className="rounded-2xl bg-slate-50 p-4">
                       <p className="text-sm text-slate-500">Budget</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {job.budget_min != null || job.budget_max != null
-                          ? `${job.currency_code || "GBP"} ${job.budget_min ?? 0} - ${
-                              job.budget_max ?? 0
-                            }`
-                          : "Not specified"}
+                        {formatBudget({
+                          currencyCode: job.currency_code,
+                          min: job.budget_min,
+                          max: job.budget_max,
+                        })}
                       </p>
                     </div>
 
@@ -365,7 +410,33 @@ export default async function MyJobPostsPage({
                         {formatDateTime(job.created_at)}
                       </p>
                     </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-sm text-slate-500">Expires</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {formatDateTime(job.expires_at) || "Not specified"}
+                      </p>
+                    </div>
                   </div>
+
+                  {job.status === "pending" ? (
+                    <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      This job is waiting for admin review and will become visible
+                      to workers once approved.
+                    </div>
+                  ) : null}
+
+                  {job.status === "rejected" ? (
+                    <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      This job was rejected and is not visible to workers.
+                    </div>
+                  ) : null}
+
+                  {job.status === "paused" ? (
+                    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                      This job is paused and currently hidden from workers.
+                    </div>
+                  ) : null}
 
                   <div className="mt-8 space-y-5">
                     {jobApps.length === 0 ? (

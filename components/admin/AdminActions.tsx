@@ -134,7 +134,7 @@ export function AdminUserAction({
         </button>
       </div>
 
-      {showConfirm && (
+      {showConfirm ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-[2rem] bg-white p-6 shadow-2xl">
             <h3 className="text-xl font-bold text-slate-900">
@@ -182,9 +182,9 @@ export function AdminUserAction({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {showDeleteConfirm && (
+      {showDeleteConfirm ? (
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-[2rem] bg-white p-6 shadow-2xl">
             <h3 className="text-xl font-bold text-slate-900">Delete user?</h3>
@@ -224,7 +224,7 @@ export function AdminUserAction({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }
@@ -247,6 +247,8 @@ export function AdminJobAction({
   const [showConfirm, setShowConfirm] = useState(false);
   const [reason, setReason] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const normalizedStatus = (currentStatus || "").toLowerCase();
 
   const isReasonRequired =
     pendingStatus === "paused" || pendingStatus === "rejected";
@@ -311,7 +313,7 @@ export function AdminJobAction({
       });
 
       const raw = await response.text();
-      let data: { error?: string; success?: boolean } = {};
+      let data: { error?: string; success?: boolean; message?: string } = {};
 
       try {
         data = raw ? JSON.parse(raw) : {};
@@ -320,7 +322,7 @@ export function AdminJobAction({
       }
 
       if (!response.ok) {
-        setErrorMessage(data.error || "Update failed");
+        setErrorMessage(data.error || data.message || "Update failed");
         return;
       }
 
@@ -335,15 +337,15 @@ export function AdminJobAction({
   };
 
   const statusLabel =
-    currentStatus === "pending"
+    normalizedStatus === "pending"
       ? "Pending review"
-      : currentStatus === "open"
+      : normalizedStatus === "open"
       ? "Approved"
-      : currentStatus === "paused"
+      : normalizedStatus === "paused"
       ? "Paused"
-      : currentStatus === "rejected"
+      : normalizedStatus === "rejected"
       ? "Rejected"
-      : currentStatus === "closed"
+      : normalizedStatus === "closed"
       ? "Closed"
       : currentStatus;
 
@@ -358,7 +360,7 @@ export function AdminJobAction({
           <button
             type="button"
             onClick={() => askConfirm("open")}
-            disabled={loading || currentStatus === "open"}
+            disabled={loading || normalizedStatus === "open"}
             className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Approve
@@ -367,7 +369,7 @@ export function AdminJobAction({
           <button
             type="button"
             onClick={() => askConfirm("paused")}
-            disabled={loading || currentStatus === "paused"}
+            disabled={loading || normalizedStatus === "paused"}
             className="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Pause
@@ -376,7 +378,7 @@ export function AdminJobAction({
           <button
             type="button"
             onClick={() => askConfirm("rejected")}
-            disabled={loading || currentStatus === "rejected"}
+            disabled={loading || normalizedStatus === "rejected"}
             className="rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Reject
@@ -384,7 +386,7 @@ export function AdminJobAction({
         </div>
       </div>
 
-      {showConfirm && pendingStatus && (
+      {showConfirm && pendingStatus ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4 py-6">
           <div className="w-full max-w-lg rounded-[2rem] bg-white p-6 shadow-2xl">
             <h3 className="text-2xl font-bold text-slate-900">{modalTitle}</h3>
@@ -456,8 +458,7 @@ export function AdminJobAction({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }
-

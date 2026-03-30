@@ -21,31 +21,41 @@ type ProfileRow = {
 type JobRow = {
   id: string;
   hirer_id: string | null;
-  title: string;
+  category: string | null;
+  title: string | null;
+  title_slug: string | null;
   description: string | null;
-  status: string;
+  status: string | null;
+  visibility: string | null;
+  country: string | null;
+  region: string | null;
   city: string | null;
+  postcode: string | null;
+  postcode_prefix: string | null;
+  postcode_full: string | null;
   area_slug: string | null;
   location_type: string | null;
   budget_min: number | null;
   budget_max: number | null;
   currency_code: string | null;
+  expires_at: string | null;
   created_at: string;
-  updated_at?: string | null;
+  updated_at: string | null;
+  deleted_at: string | null;
 };
 
 type BookingRow = {
   id: string;
-  title: string;
-  status: string;
+  title: string | null;
+  status: string | null;
   created_at: string;
 };
 
 type ReportRow = {
   id: string;
-  reason: string;
+  reason: string | null;
   details: string | null;
-  status: string;
+  status: string | null;
   created_at: string;
 };
 
@@ -54,13 +64,14 @@ type HirerProfileRow = {
   user_id: string;
   company_name: string | null;
   contact_name: string | null;
+  industry: string | null;
 };
 
 function formatDateSafe(value: string | null | undefined) {
   if (!value) return "";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString([], {
+  return d.toLocaleString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -69,61 +80,17 @@ function formatDateSafe(value: string | null | undefined) {
   });
 }
 
-function statusClasses(status: string) {
-  if (status === "pending") return "bg-amber-50 text-amber-700 ring-amber-200";
-  if (status === "open" || status === "active")
+function statusClasses(status?: string | null) {
+  const value = (status || "").toLowerCase();
+
+  if (value === "pending") return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (value === "open" || value === "active")
     return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  if (status === "paused") return "bg-slate-100 text-slate-700 ring-slate-200";
-  if (status === "rejected") return "bg-rose-50 text-rose-700 ring-rose-200";
-  if (status === "closed") return "bg-indigo-50 text-indigo-700 ring-indigo-200";
+  if (value === "paused") return "bg-slate-100 text-slate-700 ring-slate-200";
+  if (value === "rejected") return "bg-rose-50 text-rose-700 ring-rose-200";
+  if (value === "closed") return "bg-indigo-50 text-indigo-700 ring-indigo-200";
+
   return "bg-slate-100 text-slate-700 ring-slate-200";
-}
-
-function extractStructuredMeta(description?: string | null) {
-  const raw = (description || "").trim();
-  if (!raw) {
-    return {
-      mainDescription: "",
-      meta: {} as Record<string, string>,
-    };
-  }
-
-  const marker = "HIRING DETAILS";
-  const markerIndex = raw.indexOf(marker);
-
-  if (markerIndex === -1) {
-    return {
-      mainDescription: raw,
-      meta: {} as Record<string, string>,
-    };
-  }
-
-  const before = raw.slice(0, markerIndex).replace(/-+$/g, "").trim();
-  const after = raw.slice(markerIndex).split("\n");
-
-  const meta: Record<string, string> = {};
-
-  for (const line of after) {
-    const cleaned = line.trim();
-    if (!cleaned || cleaned === marker || cleaned.startsWith("---")) {
-      continue;
-    }
-
-    const separatorIndex = cleaned.indexOf(":");
-    if (separatorIndex === -1) continue;
-
-    const key = cleaned.slice(0, separatorIndex).trim();
-    const value = cleaned.slice(separatorIndex + 1).trim();
-
-    if (key && value) {
-      meta[key] = value;
-    }
-  }
-
-  return {
-    mainDescription: before,
-    meta,
-  };
 }
 
 function compactText(value?: string | null, max = 220) {
@@ -131,6 +98,73 @@ function compactText(value?: string | null, max = 220) {
   if (!text) return "";
   if (text.length <= max) return text;
   return `${text.slice(0, max).trim()}…`;
+}
+
+function formatLocation({
+  country,
+  region,
+  city,
+  postcode,
+  postcodePrefix,
+  postcodeFull,
+  areaSlug,
+}: {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  postcodePrefix?: string | null;
+  postcodeFull?: string | null;
+  areaSlug?: string | null;
+}) {
+  const parts = [city, region, country].filter(Boolean);
+  const base = parts.join(", ");
+
+  if (postcodeFull) {
+    return base ? `${base} (${postcodeFull})` : postcodeFull;
+  }
+
+  if (postcodePrefix) {
+    return base ? `${base} (${postcodePrefix})` : postcodePrefix;
+  }
+
+  if (postcode) {
+    return base ? `${base} (${postcode})` : postcode;
+  }
+
+  return base || areaSlug || "Local area";
+}
+
+function formatBudget({
+  min,
+  max,
+  currencyCode,
+}: {
+  min?: number | null;
+  max?: number | null;
+  currencyCode?: string | null;
+}) {
+  const currency = currencyCode || "GBP";
+
+  if (min != null && max != null) {
+    return `${currency} ${min} - ${max}`;
+  }
+
+  if (min != null) {
+    return `${currency} ${min}+`;
+  }
+
+  if (max != null) {
+    return `Up to ${currency} ${max}`;
+  }
+
+  return "Not specified";
+}
+
+function formatWorkType(value?: string | null) {
+  if (!value) return "Not specified";
+  if (value === "local") return "Local / on-site";
+  return value.replaceAll("_", " ");
 }
 
 export default async function AdminPage() {
@@ -171,7 +205,31 @@ export default async function AdminPage() {
       supabase
         .from("jobs")
         .select(
-          "id, hirer_id, title, description, status, city, area_slug, location_type, budget_min, budget_max, currency_code, created_at, updated_at"
+          `
+          id,
+          hirer_id,
+          category,
+          title,
+          title_slug,
+          description,
+          status,
+          visibility,
+          country,
+          region,
+          city,
+          postcode,
+          postcode_prefix,
+          postcode_full,
+          area_slug,
+          location_type,
+          budget_min,
+          budget_max,
+          currency_code,
+          expires_at,
+          created_at,
+          updated_at,
+          deleted_at
+        `
         )
         .order("created_at", { ascending: false })
         .limit(24),
@@ -197,23 +255,29 @@ export default async function AdminPage() {
   const hirerIds = [...new Set(jobRows.map((job) => job.hirer_id).filter(Boolean))] as string[];
 
   let hirerNameMap: Record<string, string> = {};
+  let hirerIndustryMap: Record<string, string> = {};
+
   if (hirerIds.length > 0) {
     const { data: hirers } = await supabase
       .from("hirer_profiles")
-      .select("id, user_id, company_name, contact_name")
+      .select("id, user_id, company_name, contact_name, industry")
       .in("id", hirerIds);
 
-    hirerNameMap = ((hirers || []) as HirerProfileRow[]).reduce<Record<string, string>>(
-      (acc, item) => {
-        acc[item.id] = item.company_name || item.contact_name || "Hirer";
-        return acc;
-      },
-      {}
-    );
+    const rows = (hirers || []) as HirerProfileRow[];
+
+    hirerNameMap = rows.reduce<Record<string, string>>((acc, item) => {
+      acc[item.id] = item.company_name || item.contact_name || "Hirer";
+      return acc;
+    }, {});
+
+    hirerIndustryMap = rows.reduce<Record<string, string>>((acc, item) => {
+      acc[item.id] = item.industry || "";
+      return acc;
+    }, {});
   }
 
-  const pendingJobs = jobRows.filter((job) => job.status === "pending");
-  const reviewedJobs = jobRows.filter((job) => job.status !== "pending");
+  const pendingJobs = jobRows.filter((job) => (job.status || "") === "pending");
+  const reviewedJobs = jobRows.filter((job) => (job.status || "") !== "pending");
 
   const totalUsers = userRows.length;
   const totalJobs = jobRows.length;
@@ -231,8 +295,8 @@ export default async function AdminPage() {
                 Admin & moderation
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Review pending jobs first, inspect richer hiring details, and approve,
-                pause, or reject listings without changing the current workflow.
+                Review pending jobs first, approve or reject listings, pause live
+                posts when needed, and monitor users, reports, and bookings.
               </p>
             </div>
 
@@ -278,8 +342,7 @@ export default async function AdminPage() {
                   Jobs pending review
                 </h2>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  These are the jobs that were submitted for admin review and should be
-                  checked first.
+                  These jobs were submitted for admin review and should be checked first.
                 </p>
               </div>
 
@@ -290,193 +353,138 @@ export default async function AdminPage() {
 
             <div className="mt-6 space-y-5">
               {pendingJobs.length > 0 ? (
-                pendingJobs.map((item) => {
-                  const parsed = extractStructuredMeta(item.description);
-                  const meta = parsed.meta;
+                pendingJobs.map((item) => (
+                  <article
+                    key={item.id}
+                    className="rounded-[1.75rem] border border-amber-200 bg-amber-50/40 p-5"
+                  >
+                    <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h3 className="text-2xl font-bold text-slate-900">
+                            {item.title || "Untitled job"}
+                          </h3>
 
-                  return (
-                    <article
-                      key={item.id}
-                      className="rounded-[1.75rem] border border-amber-200 bg-amber-50/40 p-5"
-                    >
-                      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <h3 className="text-2xl font-bold text-slate-900">
-                              {item.title}
-                            </h3>
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClasses(
-                                item.status
-                              )}`}
-                            >
-                              {item.status}
+                          {item.category ? (
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                              {item.category}
                             </span>
-                          </div>
+                          ) : null}
 
-                          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Hirer</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {item.hirer_id ? hirerNameMap[item.hirer_id] || "Hirer" : "Hirer"}
-                              </p>
-                            </div>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClasses(
+                              item.status
+                            )}`}
+                          >
+                            {item.status || "unknown"}
+                          </span>
+                        </div>
 
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Location</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {item.city || item.area_slug || "Local area"}
-                              </p>
-                              <p className="mt-1 text-xs capitalize text-slate-500">
-                                {item.location_type?.replaceAll("_", " ") || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Budget</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {item.budget_min != null || item.budget_max != null
-                                  ? `${item.currency_code || "GBP"} ${item.budget_min ?? 0} - ${
-                                      item.budget_max ?? 0
-                                    }`
-                                  : "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Submitted</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {formatDateSafe(item.created_at)}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="mt-5 rounded-[1.5rem] bg-white p-5 ring-1 ring-slate-200">
-                            <p className="text-sm font-semibold text-slate-700">
-                              Main description
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Hirer</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {item.hirer_id ? hirerNameMap[item.hirer_id] || "Hirer" : "Hirer"}
                             </p>
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                              {parsed.mainDescription || "No main description provided."}
+                            {item.hirer_id && hirerIndustryMap[item.hirer_id] ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {hirerIndustryMap[item.hirer_id]}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Location</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatLocation({
+                                country: item.country,
+                                region: item.region,
+                                city: item.city,
+                                postcode: item.postcode,
+                                postcodePrefix: item.postcode_prefix,
+                                postcodeFull: item.postcode_full,
+                                areaSlug: item.area_slug,
+                              })}
                             </p>
                           </div>
 
-                          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Compensation model</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {meta["Compensation model"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Contract type</p>
-                              <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
-                                {meta["Contract type"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Urgency</p>
-                              <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
-                                {meta["Urgency"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Experience level</p>
-                              <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
-                                {meta["Experience level"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Workers needed</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {meta["Workers needed"] || "1"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Expected duration</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {meta["Expected duration"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Hours / shift details</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {meta["Hours / shift details"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Preferred start date</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {meta["Preferred start date"] || "Flexible"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                              <p className="text-sm text-slate-500">Application deadline</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">
-                                {meta["Application deadline"] || "Not specified"}
-                              </p>
-                            </div>
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Work type</p>
+                            <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
+                              {formatWorkType(item.location_type)}
+                            </p>
                           </div>
 
-                          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200 lg:col-span-1">
-                              <p className="text-sm text-slate-500">Preferred schedule</p>
-                              <p className="mt-2 text-sm leading-7 text-slate-700">
-                                {meta["Preferred schedule"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200 lg:col-span-1">
-                              <p className="text-sm text-slate-500">Skills required</p>
-                              <p className="mt-2 text-sm leading-7 text-slate-700">
-                                {meta["Skills required"] || "Not specified"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200 lg:col-span-1">
-                              <p className="text-sm text-slate-500">Materials / tools</p>
-                              <p className="mt-2 text-sm leading-7 text-slate-700">
-                                {meta["Materials / tools"] || "Not specified"}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Contact preference</p>
-                            <p className="mt-2 text-sm leading-7 text-slate-700">
-                              {meta["Preferred contact method"] || "In-app chat"}
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Budget</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatBudget({
+                                min: item.budget_min,
+                                max: item.budget_max,
+                                currencyCode: item.currency_code,
+                              })}
                             </p>
                           </div>
                         </div>
 
-                        <div className="w-full xl:max-w-xs">
-                          <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                            <p className="text-sm font-medium text-slate-500">Review actions</p>
-                            <div className="mt-4">
-                              <AdminJobAction
-                                adminUserId={user.id}
-                                jobId={item.id}
-                                currentStatus={item.status}
-                              />
-                            </div>
+                        <div className="mt-5 rounded-[1.5rem] bg-white p-5 ring-1 ring-slate-200">
+                          <p className="text-sm font-semibold text-slate-700">
+                            Job description
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                            {item.description?.trim() || "No description provided."}
+                          </p>
+                        </div>
+
+                        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Visibility</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {item.visibility || "Not specified"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Submitted</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatDateSafe(item.created_at)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Updated</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatDateSafe(item.updated_at) || "Not yet updated"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Expires</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatDateSafe(item.expires_at) || "Will be set on approval"}
+                            </p>
                           </div>
                         </div>
                       </div>
-                    </article>
-                  );
-                })
+
+                      <div className="w-full xl:max-w-xs">
+                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                          <p className="text-sm font-medium text-slate-500">Review actions</p>
+                          <div className="mt-4">
+                            <AdminJobAction
+                              adminUserId={user.id}
+                              jobId={item.id}
+                              currentStatus={item.status || "pending"}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                ))
               ) : (
                 <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-8 text-center">
-                  <h3 className="text-xl font-bold text-slate-900">
-                    No pending jobs
-                  </h3>
+                  <h3 className="text-xl font-bold text-slate-900">No pending jobs</h3>
                   <p className="mt-2 text-sm text-slate-600">
                     New job submissions waiting for review will appear here first.
                   </p>
@@ -507,35 +515,62 @@ export default async function AdminPage() {
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-lg font-bold text-slate-900">{item.title}</h3>
+                          <h3 className="text-lg font-bold text-slate-900">
+                            {item.title || "Untitled job"}
+                          </h3>
+
+                          {item.category ? (
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
+                              {item.category}
+                            </span>
+                          ) : null}
 
                           <span
                             className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusClasses(
                               item.status
                             )}`}
                           >
-                            {item.status}
+                            {item.status || "unknown"}
                           </span>
                         </div>
 
                         <p className="mt-2 text-sm text-slate-600">
-                          {item.city || item.area_slug || "Local area"}
+                          {formatLocation({
+                            country: item.country,
+                            region: item.region,
+                            city: item.city,
+                            postcode: item.postcode,
+                            postcodePrefix: item.postcode_prefix,
+                            postcodeFull: item.postcode_full,
+                            areaSlug: item.area_slug,
+                          })}
                         </p>
 
                         <p className="mt-3 text-sm leading-6 text-slate-600">
-                          {compactText(extractStructuredMeta(item.description).mainDescription) ||
-                            "No description provided."}
+                          {compactText(item.description) || "No description provided."}
                         </p>
 
-                        <p className="mt-2 text-xs text-slate-500">
-                          Posted {formatDateSafe(item.created_at)}
-                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                          <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                            {formatWorkType(item.location_type)}
+                          </span>
+                          <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                            {formatBudget({
+                              min: item.budget_min,
+                              max: item.budget_max,
+                              currencyCode: item.currency_code,
+                            })}
+                          </span>
+                          <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                            Posted {formatDateSafe(item.created_at)}
+                          </span>
+                        </div>
                       </div>
 
                       <AdminJobAction
                         adminUserId={user.id}
                         jobId={item.id}
-                        currentStatus={item.status}
+                        currentStatus={item.status || "pending"}
                       />
                     </div>
                   </div>
@@ -645,7 +680,9 @@ export default async function AdminPage() {
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900">{item.reason}</h3>
+                          <h3 className="text-lg font-bold text-slate-900">
+                            {item.reason || "Report"}
+                          </h3>
                           <p className="mt-2 text-sm text-slate-600">
                             {item.details || "No extra details."}
                           </p>
@@ -655,7 +692,7 @@ export default async function AdminPage() {
                         </div>
 
                         <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                          {item.status}
+                          {item.status || "open"}
                         </span>
                       </div>
                     </div>
@@ -683,14 +720,16 @@ export default async function AdminPage() {
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900">{item.title}</h3>
+                          <h3 className="text-lg font-bold text-slate-900">
+                            {item.title || "Booking"}
+                          </h3>
                           <p className="mt-2 text-xs text-slate-500">
                             {formatDateSafe(item.created_at)}
                           </p>
                         </div>
 
                         <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                          {item.status}
+                          {item.status || "unknown"}
                         </span>
                       </div>
                     </div>
@@ -708,4 +747,3 @@ export default async function AdminPage() {
     </main>
   );
 }
-
