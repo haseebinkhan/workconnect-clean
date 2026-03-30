@@ -13,8 +13,10 @@ type DashboardCard = {
   tone?: "default" | "worker" | "hirer" | "neutral";
 };
 
-type SearchParamsType = {
-  mode?: string;
+type DashboardPageProps = {
+  searchParams?: Promise<{
+    mode?: string;
+  }>;
 };
 
 function cardToneClass(tone?: DashboardCard["tone"]) {
@@ -26,10 +28,8 @@ function cardToneClass(tone?: DashboardCard["tone"]) {
 
 export default async function DashboardPage({
   searchParams,
-}: {
-  searchParams?: SearchParamsType;
-}) {
-  const params = searchParams || {};
+}: DashboardPageProps) {
+  const params = (await searchParams) || {};
   const requestedMode = typeof params.mode === "string" ? params.mode : "all";
 
   const supabase = await createClient();
@@ -229,7 +229,9 @@ export default async function DashboardPage({
     }
   }
 
-  const bookingIds = (unreadMessagesBookingsResult.data || []).map((row) => row.id);
+  const bookingIds = (unreadMessagesBookingsResult.data || []).map(
+    (row) => row.id
+  );
 
   if (bookingIds.length > 0) {
     const { count } = await supabase
@@ -278,7 +280,9 @@ export default async function DashboardPage({
       description: workerProfileResult.data?.id
         ? "Update your worker profile, availability, and contact settings."
         : "Create a worker profile with NI area, BT postcode, and availability.",
-      href: workerProfileResult.data?.id ? "/profile/worker" : "/become-worker",
+      href: workerProfileResult.data?.id
+        ? "/profile/worker"
+        : "/become-worker",
       visible: showWorkerCards,
       tone: "worker",
     },
@@ -291,7 +295,8 @@ export default async function DashboardPage({
     },
     {
       title: "Saved workers",
-      description: "Keep a shortlist of promising workers and compare them later.",
+      description:
+        "Keep a shortlist of promising workers and compare them later.",
       href: "/saved-workers",
       badge:
         (favoritesResult.count || 0) > 0
@@ -322,13 +327,15 @@ export default async function DashboardPage({
     },
     {
       title: "My requests",
-      description: "Track worker requests, active bookings, and completion updates.",
+      description:
+        "Track worker requests, active bookings, and completion updates.",
       href: "/my-requests",
       badge:
         (unseenBookingsForHirerResult.count || 0) > 0
           ? String(unseenBookingsForHirerResult.count || 0)
           : null,
-      visible: (access.canSendWorkerRequest || access.canPostJobs) && showHirerCards,
+      visible:
+        (access.canSendWorkerRequest || access.canPostJobs) && showHirerCards,
       tone: "hirer",
     },
     {
@@ -511,4 +518,4 @@ export default async function DashboardPage({
       </section>
     </main>
   );
-} 
+}
