@@ -5,35 +5,107 @@ const adminSupabase = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export type EnqueueEmailInput = {
-  kind: string;
+type EnqueueEmailInput = {
+  userId?: string | null;
   toEmail: string;
   subject: string;
   html: string;
-  meta?: Record<string, unknown>;
+  emailType?: string | null;
+  meta?: Record<string, any> | null;
+  scheduledFor?: string | null;
 };
 
-function normalizeEmail(value: string) {
-  return value.trim().toLowerCase();
-}
+export async function enqueueEmail({
+  userId = null,
+  toEmail,
+  subject,
+  html,
+  emailType = null,
+  meta = {},
+  scheduledFor = null,
+}: EnqueueEmailInput) {
+  const cleanEmail = toEmail.trim().toLowerCase();
+  const cleanSubject = subject.trim();
+  const cleanHtml = html.trim();
 
-export async function enqueueEmails(items: EnqueueEmailInput[]) {
-  const rows = items
-    .map((item) => ({
-      kind: item.kind,
-      to_email: normalizeEmail(item.toEmail),
-      subject: item.subject,
-      html: item.html,
-      meta: item.meta ?? {},
-      status: "pending" as const,
-    }))
-    .filter((item) => item.to_email.length > 3);
+  if (!cleanEmail || !cleanSubject || !cleanHtml) {
+    throw new Error("Missing required email queue fields.");
+  }
 
-  if (rows.length === 0) return;
-
-  const { error } = await adminSupabase.from("email_jobs").insert(rows);
+  const { data, error } = await adminSupabase
+    .from("email_jobs")
+    .insert({
+      user_id: userId,
+      to_email: cleanEmail,
+      subject: cleanSubject,
+      html: cleanHtml,
+      email_type: emailType,
+      meta: meta || {},
+      scheduled_for: scheduledFor,
+      status: "pending",
+    })
+    .select("id")
+    .single();
 
   if (error) {
-    throw new Error(error.message);
+    console.error("enqueueEmail error:", error);
+    throw new Error(error.message || "Could not queue email.");
   }
+
+  return data;
+}
+
+type BulkEmailJob = {
+  userId?: string | null;
+  toEmail: string;
+  subject: string;
+  html: string;
+  emailType?: string | null;
+  meta?: Record<string, any> | null;
+  scheduledFor?: string | null;
+};
+
+export async function enqueueEmailsBulk(items: BulkEmailJob[]) {
+  if (!items.length) {
+    return [];
+  }
+
+  const rows = items
+    .map((item) => {
+      const toEmail = item.toEmail?.trim().toLowerCase() || "";
+      const subject = item.subject?.trim() || "";
+      const html = item.html?.trim() || "";
+
+      if (!toEmail || !subject || !html) {
+        return null;
+      }
+
+      return {
+        user_id: item.userId || null,
+        to_email: toEmail,
+        subject,
+        html,
+        email_type: item.emailType || null,
+        meta: item.meta || {},
+        scheduled_for: item.scheduledFor || null,
+        status: "pending",
+      };
+    })
+    .filter(Boolean);
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const { data, error } = await adminSupabase
+    .from("email_jobs")
+    .insert(rows)
+    .select("id");
+
+  if (error) {
+    console.error("enqueueEmailsBulk error:", error);
+    throw new Error(error.message || "Could not queue bulk emails.");
+  }
+
+  return data || [];
 }

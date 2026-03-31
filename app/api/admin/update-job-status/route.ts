@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { sendEmail } from "@/lib/email/send";
 import { enqueueEmails } from "@/lib/email/queue";
 import {
   jobApprovedEmail,
@@ -314,39 +313,68 @@ export async function POST(req: Request) {
           hirerProfile.contact_name ||
           "there";
 
+        const emailJobs = [];
+
         if (status === "open") {
-          await sendEmail({
-            to: hirerAccount.email,
+          emailJobs.push({
+            kind: "job_approved",
+            userId: hirerAccount.id,
+            toEmail: hirerAccount.email,
             subject: "Your WorkConnect job is now live",
             html: jobApprovedEmail({
               hirerName,
               jobTitle: job.title || "Untitled job",
             }),
+            meta: {
+              job_id: job.id,
+              job_title: job.title || "Untitled job",
+              status: "open",
+            },
           });
         }
 
         if (status === "paused") {
-          await sendEmail({
-            to: hirerAccount.email,
+          emailJobs.push({
+            kind: "job_paused",
+            userId: hirerAccount.id,
+            toEmail: hirerAccount.email,
             subject: "Your WorkConnect job has been paused",
             html: jobPausedEmail({
               hirerName,
               jobTitle: job.title || "Untitled job",
               reason: reason || "Please review your job post.",
             }),
+            meta: {
+              job_id: job.id,
+              job_title: job.title || "Untitled job",
+              status: "paused",
+              reason: reason || "Please review your job post.",
+            },
           });
         }
 
         if (status === "rejected") {
-          await sendEmail({
-            to: hirerAccount.email,
+          emailJobs.push({
+            kind: "job_rejected",
+            userId: hirerAccount.id,
+            toEmail: hirerAccount.email,
             subject: "Your WorkConnect job was not approved",
             html: jobRejectedEmail({
               hirerName,
               jobTitle: job.title || "Untitled job",
               reason: reason || "Please review your job post.",
             }),
+            meta: {
+              job_id: job.id,
+              job_title: job.title || "Untitled job",
+              status: "rejected",
+              reason: reason || "Please review your job post.",
+            },
           });
+        }
+
+        if (emailJobs.length > 0) {
+          await enqueueEmails(emailJobs);
         }
       }
     }
@@ -398,24 +426,26 @@ export async function POST(req: Request) {
           },
         }));
 
-        for (const batch of chunkArray(notificationRows, NOTIFICATION_BATCH_SIZE)) {
+        for (const batch of chunkArray(
+          notificationRows,
+          NOTIFICATION_BATCH_SIZE
+        )) {
           await adminSupabase.from("notifications").insert(batch);
         }
-
-        const regionalEmailHtml = newRegionalJobEmail({
-          userName: "there",
-          jobTitle: job.title || "Untitled job",
-          category: job.category || "General",
-          location: locationText,
-          budget: budgetText,
-        });
 
         await enqueueEmails(
           audience.map((item) => ({
             kind: "new_job_in_area",
+            userId: item.id,
             toEmail: item.email,
             subject: `New WorkConnect job in ${job.region}`,
-            html: regionalEmailHtml,
+            html: newRegionalJobEmail({
+              userName: item.full_name || "there",
+              jobTitle: job.title || "Untitled job",
+              category: job.category || "General",
+              location: locationText,
+              budget: budgetText,
+            }),
             meta: {
               job_id: job.id,
               region: job.region,
