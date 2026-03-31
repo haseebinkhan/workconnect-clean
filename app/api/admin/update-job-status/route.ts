@@ -7,7 +7,7 @@ import {
   jobPausedEmail,
   jobRejectedEmail,
   newRegionalJobEmail,
-} from "@/lib/email/templates";
+} from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
