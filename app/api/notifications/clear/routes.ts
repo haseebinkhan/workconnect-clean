@@ -1,11 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-
-const adminSupabase = createAdminClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export async function POST() {
   try {
@@ -13,31 +7,37 @@ export async function POST() {
 
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    const { error } = await adminSupabase
+    const { error } = await supabase
       .from("notifications")
       .delete()
       .eq("user_id", user.id);
 
     if (error) {
-      console.error("clear notifications delete error:", error);
-      return NextResponse.json({ message: error.message }, { status: 500 });
+      return NextResponse.json(
+        { success: false, message: error.message },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: "Notifications cleared.",
+      message: "Notifications cleared",
     });
   } catch (error) {
     console.error("clear notifications error:", error);
+
     return NextResponse.json(
-      { message: "Could not clear notifications." },
+      { success: false, message: "Server error" },
       { status: 500 }
     );
   }

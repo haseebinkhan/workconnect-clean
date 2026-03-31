@@ -43,9 +43,7 @@ function formatWhen(value?: string | null) {
 function getNotificationHref(item: NotificationRow) {
   const meta = item.meta || {};
 
-  if (meta.booking_id) {
-    return `/messages/${meta.booking_id}`;
-  }
+  if (meta.booking_id) return `/messages/${meta.booking_id}`;
 
   if (meta.job_id && item.type === "job_application") {
     return `/my-job-posts?job=${meta.job_id}${
@@ -53,19 +51,8 @@ function getNotificationHref(item: NotificationRow) {
     }`;
   }
 
-  if (meta.job_id && item.type === "job_status_updated") {
-    return "/my-job-posts";
-  }
-
-  if (
-    item.type === "application_accepted" ||
-    item.type === "application_rejected"
-  ) {
+  if (item.type === "application_accepted" || item.type === "application_rejected") {
     return "/my-applications";
-  }
-
-  if (item.type === "application_accepted_confirmation") {
-    return "/my-job-posts";
   }
 
   if (item.type === "job_submitted_for_review") {
@@ -76,10 +63,6 @@ function getNotificationHref(item: NotificationRow) {
     return meta.booking_id ? `/messages/${meta.booking_id}` : "/messages";
   }
 
-  if (item.type.includes("report")) {
-    return "/admin/reports";
-  }
-
   return "/notifications";
 }
 
@@ -88,7 +71,6 @@ function getNotificationIcon(type: string) {
   if (type === "job_application") return FileText;
   if (type === "application_accepted") return CheckCircle2;
   if (type === "application_rejected") return XCircle;
-  if (type === "application_accepted_confirmation") return CheckCircle2;
   if (type === "job_status_updated") return Briefcase;
   if (type === "job_submitted_for_review") return ShieldAlert;
   return Bell;
@@ -114,76 +96,38 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
       const { data, error } = await supabase
         .from("notifications")
-        .select("id, user_id, type, title, body, is_read, meta, created_at")
+        .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(12);
 
       if (error) {
-        console.error("load notifications error:", error);
+        console.error(error);
         return;
       }
 
-      setNotifications((data || []) as NotificationRow[]);
-    } catch (error) {
-      console.error("load notifications crash:", error);
+      setNotifications(data || []);
     } finally {
       setLoading(false);
     }
   }
 
-  async function markOneAsRead(id: string) {
-    try {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", id)
-        .eq("user_id", userId);
-
-      if (error) {
-        console.error("mark one notification error:", error);
-        return;
-      }
-
-      setNotifications((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, is_read: true } : item
-        )
-      );
-    } catch (error) {
-      console.error("mark one notification crash:", error);
-    }
-  }
-
   async function markAllAsRead() {
-    try {
-      const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
+    const ids = notifications.filter(n => !n.is_read).map(n => n.id);
+    if (ids.length === 0) return;
 
-      if (unreadIds.length === 0) return;
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", ids);
 
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("user_id", userId)
-        .in("id", unreadIds);
-
-      if (error) {
-        console.error("mark all notifications error:", error);
-        return;
-      }
-
-      setNotifications((prev) =>
-        prev.map((item) => ({ ...item, is_read: true }))
-      );
-    } catch (error) {
-      console.error("mark all notifications crash:", error);
-    }
+    setNotifications(prev =>
+      prev.map(n => ({ ...n, is_read: true }))
+    );
   }
 
   async function clearAllNotifications() {
-    const ok = window.confirm(
-      "Clear all notifications? This will permanently remove them."
-    );
+    const ok = window.confirm("Delete all notifications?");
     if (!ok) return;
 
     try {
@@ -191,30 +135,24 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
       const res = await fetch("/api/notifications/clear", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId }),
       });
 
-      let data: { success?: boolean; message?: string } = {};
-
+      let data;
       try {
         data = await res.json();
       } catch {
-        data = { message: "Unexpected server response." };
+        alert("Server error");
+        return;
       }
 
-      if (!res.ok) {
-        console.error("clear notifications error:", data?.message);
-        alert(data?.message || "Could not clear notifications.");
+      if (!res.ok || !data.success) {
+        alert(data.message || "Failed");
         return;
       }
 
       setNotifications([]);
-    } catch (error) {
-      console.error("clear notifications crash:", error);
-      alert("Could not clear notifications.");
+    } catch {
+      alert("Network error");
     } finally {
       setClearing(false);
     }
@@ -222,253 +160,89 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!userId) return;
-    void loadNotifications();
+    loadNotifications();
   }, [userId]);
 
   useEffect(() => {
-    if (!userId) return;
-
-    const channel = supabase
-      .channel(`notifications-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const inserted = payload.new as NotificationRow;
-
-          setNotifications((prev) => {
-            const next = [inserted, ...prev];
-            return next.slice(0, 12);
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const updated = payload.new as NotificationRow;
-          setNotifications((prev) =>
-            prev.map((item) => (item.id === updated.id ? updated : item))
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const deletedId = payload.old.id as string;
-          setNotifications((prev) => prev.filter((item) => item.id !== deletedId));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, userId]);
-
-  useEffect(() => {
-    function handleOutsideClick(event: MouseEvent) {
+    function outside(e: MouseEvent) {
       if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
     }
 
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
   }, []);
 
   return (
     <div ref={wrapRef} className="relative">
       <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
-        aria-label="Open notifications"
+        onClick={() => setOpen(v => !v)}
+        className="relative h-11 w-11 rounded-2xl border bg-white"
       >
-        <Bell className="h-5 w-5" />
-
-        {unreadCount > 0 ? (
-          <span className="absolute -right-1 -top-1 min-w-[20px] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[11px] font-bold text-white shadow">
-            {unreadCount > 9 ? "9+" : unreadCount}
+        <Bell className="mx-auto" />
+        {unreadCount > 0 && (
+          <span className="absolute top-0 right-0 text-xs bg-red-500 text-white px-1 rounded-full">
+            {unreadCount}
           </span>
-        ) : null}
+        )}
       </button>
 
-      {open ? (
-        <div className="absolute right-0 top-14 z-[80] w-[360px] overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Notifications</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                {notifications.length > 0
-                  ? `${notifications.length} total notification${
-                      notifications.length > 1 ? "s" : ""
-                    }`
-                  : "You are all caught up"}
-              </p>
-            </div>
+      {open && (
+        <div className="absolute right-0 mt-2 w-80 bg-white shadow-xl rounded-xl z-50">
+          <div className="p-4 border-b flex justify-between">
+            <b>Notifications</b>
 
-            <div className="flex items-center gap-2">
-              {unreadCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => void markAllAsRead()}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Mark all read
-                </button>
-              ) : null}
-
-              {notifications.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => void clearAllNotifications()}
-                  disabled={clearing}
-                  className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {clearing ? "Clearing..." : "Clear all"}
-                </button>
-              ) : null}
+            <div className="flex gap-2">
+              <button onClick={markAllAsRead} className="text-xs">
+                Read all
+              </button>
+              <button onClick={clearAllNotifications} className="text-xs text-red-600">
+                {clearing ? "..." : "Clear"}
+              </button>
             </div>
           </div>
 
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto">
             {loading ? (
-              <div className="space-y-3 p-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="animate-pulse rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="h-4 w-32 rounded bg-slate-200" />
-                    <div className="mt-3 h-3 w-full rounded bg-slate-100" />
-                    <div className="mt-2 h-3 w-2/3 rounded bg-slate-100" />
-                  </div>
-                ))}
-              </div>
+              <p className="p-4 text-sm">Loading...</p>
             ) : notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-                <div className="rounded-full bg-slate-100 p-4">
-                  <Bell className="h-6 w-6 text-slate-500" />
-                </div>
-                <h4 className="mt-4 text-sm font-semibold text-slate-900">
-                  No notifications yet
-                </h4>
-                <p className="mt-2 max-w-[240px] text-sm leading-6 text-slate-500">
-                  Updates about jobs, messages, and approvals will appear here.
-                </p>
-              </div>
+              <p className="p-4 text-sm">No notifications</p>
             ) : (
-              <div className="p-3">
-                {notifications.map((item) => {
-                  const Icon = getNotificationIcon(item.type);
-                  const href = getNotificationHref(item);
+              notifications.map(n => {
+                const Icon = getNotificationIcon(n.type);
 
-                  return (
-                    <Link
-                      key={item.id}
-                      href={href}
-                      onClick={() => {
-                        setOpen(false);
-                        if (!item.is_read) {
-                          void markOneAsRead(item.id);
-                        }
-                      }}
-                      className={`group mb-2 flex items-start gap-3 rounded-2xl border p-4 transition ${
-                        item.is_read
-                          ? "border-slate-200 bg-white hover:bg-slate-50"
-                          : "border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50"
-                      }`}
-                    >
-                      <div
-                        className={`mt-0.5 rounded-2xl p-2 ${
-                          item.is_read ? "bg-slate-100" : "bg-white"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4 text-slate-700" />
-                      </div>
+                return (
+                  <Link
+                    key={n.id}
+                    href={getNotificationHref(n)}
+                    className={`flex gap-3 p-4 border-b ${
+                      n.is_read ? "" : "bg-indigo-50"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 mt-1" />
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <h4
-                            className={`text-sm ${
-                              item.is_read
-                                ? "font-semibold text-slate-800"
-                                : "font-bold text-slate-900"
-                            }`}
-                          >
-                            {item.title}
-                          </h4>
-
-                          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5" />
+                    <div>
+                      <div className="text-sm font-semibold">{n.title}</div>
+                      {n.body && (
+                        <div className="text-xs text-gray-500">
+                          {n.body}
                         </div>
-
-                        {item.body ? (
-                          <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">
-                            {item.body}
-                          </p>
-                        ) : null}
-
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <span className="text-xs text-slate-400">
-                            {formatWhen(item.created_at)}
-                          </span>
-
-                          {!item.is_read ? (
-                            <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                              New
-                            </span>
-                          ) : null}
-                        </div>
+                      )}
+                      <div className="text-xs text-gray-400">
+                        {formatWhen(n.created_at)}
                       </div>
-                    </Link>
-                  );
-                })}
-              </div>
+                    </div>
+                  </Link>
+                );
+              })
             )}
           </div>
 
-          <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <Link
-              href="/notifications"
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              <User className="h-4 w-4" />
-              View all notifications
-            </Link>
+          <div className="p-3 border-t text-center">
+            <Link href="/notifications">View all</Link>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
