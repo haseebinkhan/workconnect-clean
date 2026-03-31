@@ -197,16 +197,24 @@ export default function NotificationBell({ userId }: { userId: string }) {
         body: JSON.stringify({ userId }),
       });
 
-      const data = await res.json();
+      let data: { success?: boolean; message?: string } = {};
+
+      try {
+        data = await res.json();
+      } catch {
+        data = { message: "Unexpected server response." };
+      }
 
       if (!res.ok) {
         console.error("clear notifications error:", data?.message);
+        alert(data?.message || "Could not clear notifications.");
         return;
       }
 
       setNotifications([]);
     } catch (error) {
       console.error("clear notifications crash:", error);
+      alert("Could not clear notifications.");
     } finally {
       setClearing(false);
     }
@@ -464,4 +472,3 @@ export default function NotificationBell({ userId }: { userId: string }) {
     </div>
   );
 }
-

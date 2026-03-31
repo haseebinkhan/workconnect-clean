@@ -1,35 +1,39 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
-export async function POST(request: Request) {
+const adminSupabase = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST() {
   try {
     const supabase = await createClient();
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const userId = body?.userId as string;
-
-    if (!userId || userId !== user.id) {
-      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
-
-    const { error } = await supabase
+    const { error } = await adminSupabase
       .from("notifications")
       .delete()
       .eq("user_id", user.id);
 
     if (error) {
+      console.error("clear notifications delete error:", error);
       return NextResponse.json({ message: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message: "Notifications cleared." });
+    return NextResponse.json({
+      success: true,
+      message: "Notifications cleared.",
+    });
   } catch (error) {
     console.error("clear notifications error:", error);
     return NextResponse.json(
@@ -38,4 +42,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
