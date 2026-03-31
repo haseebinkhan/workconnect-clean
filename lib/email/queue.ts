@@ -15,7 +15,7 @@ type EnqueueEmailInput = {
   scheduledFor?: string | null;
 };
 
-export async function enqueueEmails({
+export async function enqueueEmail({
   userId = null,
   toEmail,
   subject,
