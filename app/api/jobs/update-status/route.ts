@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { enqueueEmails } from "@/lib/email/queue";
+import {
+  applicationAcceptedEmail,
+  applicationRejectedEmail,
+  bookingAcceptedEmail,
+} from "@/lib/email/templates";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -143,6 +149,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: workerAccount } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", workerProfile.user_id)
+      .maybeSingle();
+
     const { data: job, error: jobError } = await adminSupabase
       .from("jobs")
       .select(`
@@ -215,6 +227,11 @@ export async function POST(req: Request) {
       areaSlug: job.area_slug,
     });
 
+    const workerName = workerAccount?.full_name || "there";
+    const workerEmail = workerAccount?.email || "";
+    const hirerName =
+      hirerProfile.company_name || hirerProfile.contact_name || "Hirer";
+
     if (action === "rejected") {
       const { error: rejectError } = await adminSupabase
         .from("job_applications")
@@ -245,8 +262,7 @@ export async function POST(req: Request) {
             status: "rejected",
             reviewed_at: now,
             hirer_user_id: hirerProfile.user_id,
-            hirer_name:
-              hirerProfile.company_name || hirerProfile.contact_name || "Hirer",
+            hirer_name: hirerName,
             job_title: job.title,
             job_location: jobLocation,
           },
@@ -266,6 +282,29 @@ export async function POST(req: Request) {
           },
         },
       ]);
+
+      if (workerEmail) {
+        await enqueueEmails([
+          {
+            kind: "application_rejected",
+            userId: workerAccount?.id || workerProfile.user_id,
+            toEmail: workerEmail,
+            subject: "Application update",
+            html: applicationRejectedEmail({
+              workerName,
+              jobTitle: job.title || "Untitled job",
+              location: jobLocation,
+            }),
+            meta: {
+              application_id: application.id,
+              job_id: job.id,
+              status: "rejected",
+              job_title: job.title || "Untitled job",
+              location: jobLocation,
+            },
+          },
+        ]);
+      }
 
       return NextResponse.json({
         success: true,
@@ -343,7 +382,11 @@ export async function POST(req: Request) {
 
     if (bookingError) {
       return NextResponse.json(
-        { error: bookingError.message || "Application accepted but booking creation failed." },
+        {
+          error:
+            bookingError.message ||
+            "Application accepted but booking creation failed.",
+        },
         { status: 400 }
       );
     }
@@ -383,8 +426,7 @@ export async function POST(req: Request) {
           status: "accepted",
           reviewed_at: now,
           hirer_user_id: hirerProfile.user_id,
-          hirer_name:
-            hirerProfile.company_name || hirerProfile.contact_name || "Hirer",
+          hirer_name: hirerName,
           job_title: job.title,
           job_location: jobLocation,
           worker_location: workerLocation,
@@ -406,6 +448,52 @@ export async function POST(req: Request) {
         },
       },
     ]);
+
+    const emailJobs = [];
+
+    if (workerEmail) {
+      emailJobs.push({
+        kind: "application_accepted",
+        userId: workerAccount?.id || workerProfile.user_id,
+        toEmail: workerEmail,
+        subject: "Your application was accepted",
+        html: applicationAcceptedEmail({
+          workerName,
+          jobTitle: job.title || "Untitled job",
+          location: jobLocation,
+        }),
+        meta: {
+          application_id: application.id,
+          job_id: job.id,
+          booking_id: booking?.id || null,
+          status: "accepted",
+          job_title: job.title || "Untitled job",
+          location: jobLocation,
+        },
+      });
+
+      emailJobs.push({
+        kind: "booking_accepted",
+        userId: workerAccount?.id || workerProfile.user_id,
+        toEmail: workerEmail,
+        subject: "Booking accepted",
+        html: bookingAcceptedEmail({
+          userName: workerName,
+          bookingTitle: bookingTitle,
+          location: jobLocation,
+        }),
+        meta: {
+          booking_id: booking?.id || null,
+          job_id: job.id,
+          booking_title: bookingTitle,
+          location: jobLocation,
+        },
+      });
+    }
+
+    if (emailJobs.length > 0) {
+      await enqueueEmails(emailJobs);
+    }
 
     return NextResponse.json({
       success: true,
