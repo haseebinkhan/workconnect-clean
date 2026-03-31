@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import "./globals.css";
 import PresenceTracker from "@/components/PresenceTracker";
 import NavbarServer from "@/components/layout/NavbarServer";
 import Footer from "@/components/layout/Footer";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
+import ScrollToTop from "@/components/ScrollToTop";
 
 export const metadata: Metadata = {
   title: {
@@ -37,6 +38,7 @@ export default function RootLayout({
         <ToastProvider>
           <ConfirmProvider>
             <PresenceTracker />
+            <ScrollToTop />
 
             <div className="relative flex min-h-screen flex-col">
               <NavbarServer />
@@ -55,4 +57,3 @@ export default function RootLayout({
     </html>
   );
 }
-
