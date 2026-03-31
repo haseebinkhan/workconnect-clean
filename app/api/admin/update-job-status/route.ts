@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { enqueueEmails } from "@/lib/email/queue";
+import { enqueueEmail } from "@/lib/email/queue";
 import {
   jobApprovedEmail,
   jobPausedEmail,
