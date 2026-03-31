@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { sendEmail } from "@/lib/email/send";
+import { enqueueEmails } from "@/lib/email/queue";
 import {
   bookingAcceptedEmail,
   bookingCancelledEmail,
-} from "@/lib/email/events";
+} from "@/lib/email/templates";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -181,28 +181,48 @@ export async function POST(req: Request) {
         },
       ]);
 
+      const emailJobs = [];
+
       if (hirerAccount?.email) {
-        await sendEmail({
-          to: hirerAccount.email,
+        emailJobs.push({
+          kind: "booking_accepted",
+          userId: hirerAccount.id,
+          toEmail: hirerAccount.email,
           subject: "Your WorkConnect booking was accepted",
           html: bookingAcceptedEmail({
             userName: hirerAccount.full_name || "there",
             bookingTitle: booking.title || "Booking",
             location: locationText,
           }),
+          meta: {
+            booking_id: booking.id,
+            status: "accepted",
+            location: locationText,
+          },
         });
       }
 
       if (workerAccount?.email) {
-        await sendEmail({
-          to: workerAccount.email,
+        emailJobs.push({
+          kind: "booking_accepted_confirmation",
+          userId: workerAccount.id,
+          toEmail: workerAccount.email,
           subject: "You accepted a WorkConnect booking",
           html: bookingAcceptedEmail({
             userName: workerAccount.full_name || "there",
             bookingTitle: booking.title || "Booking",
             location: locationText,
           }),
+          meta: {
+            booking_id: booking.id,
+            status: "accepted",
+            location: locationText,
+          },
         });
+      }
+
+      if (emailJobs.length > 0) {
+        await enqueueEmails(emailJobs);
       }
 
       return NextResponse.json({
@@ -275,15 +295,26 @@ export async function POST(req: Request) {
     ]);
 
     if (notifyUser?.email) {
-      await sendEmail({
-        to: notifyUser.email,
-        subject: "A WorkConnect booking was cancelled",
-        html: bookingCancelledEmail({
-          userName: notifyUser.full_name || "there",
-          bookingTitle: booking.title || "Booking",
-          location: locationText,
-        }),
-      });
+      await enqueueEmails([
+        {
+          kind: "booking_cancelled",
+          userId: notifyUser.id,
+          toEmail: notifyUser.email,
+          subject: "A WorkConnect booking was cancelled",
+          html: bookingCancelledEmail({
+            userName: notifyUser.full_name || "there",
+            bookingTitle: booking.title || "Booking",
+            location: locationText,
+          }),
+          meta: {
+            booking_id: booking.id,
+            status: "cancelled",
+            cancelled_by: user.id,
+            cancelled_by_name: actorName,
+            location: locationText,
+          },
+        },
+      ]);
     }
 
     return NextResponse.json({
