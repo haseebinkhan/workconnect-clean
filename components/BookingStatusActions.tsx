@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { BOOKING_STATUS } from "@/lib/constants";
 
 type BookingStatusActionsProps = {
   bookingId: string;
