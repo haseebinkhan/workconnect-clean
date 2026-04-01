@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AdminJobAction, AdminUserAction } from "@/components/admin/AdminActions";
+import ProcessEmailQueueButton from "@/components/admin/ProcessEmailQueueButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -334,164 +335,7 @@ export default async function AdminPage() {
         </div>
 
         <div className="mt-8">
-          <div className="rounded-[2rem] border border-amber-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-sm font-medium text-amber-700">Priority queue</p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-900">
-                  Jobs pending review
-                </h2>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  These jobs were submitted for admin review and should be checked first.
-                </p>
-              </div>
-
-              <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
-                {pendingJobs.length} pending
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-5">
-              {pendingJobs.length > 0 ? (
-                pendingJobs.map((item) => (
-                  <article
-                    key={item.id}
-                    className="rounded-[1.75rem] border border-amber-200 bg-amber-50/40 p-5"
-                  >
-                    <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <h3 className="text-2xl font-bold text-slate-900">
-                            {item.title || "Untitled job"}
-                          </h3>
-
-                          {item.category ? (
-                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                              {item.category}
-                            </span>
-                          ) : null}
-
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClasses(
-                              item.status
-                            )}`}
-                          >
-                            {item.status || "unknown"}
-                          </span>
-                        </div>
-
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Hirer</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {item.hirer_id ? hirerNameMap[item.hirer_id] || "Hirer" : "Hirer"}
-                            </p>
-                            {item.hirer_id && hirerIndustryMap[item.hirer_id] ? (
-                              <p className="mt-1 text-xs text-slate-500">
-                                {hirerIndustryMap[item.hirer_id]}
-                              </p>
-                            ) : null}
-                          </div>
-
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Location</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {formatLocation({
-                                country: item.country,
-                                region: item.region,
-                                city: item.city,
-                                postcode: item.postcode,
-                                postcodePrefix: item.postcode_prefix,
-                                postcodeFull: item.postcode_full,
-                                areaSlug: item.area_slug,
-                              })}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Work type</p>
-                            <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
-                              {formatWorkType(item.location_type)}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Budget</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {formatBudget({
-                                min: item.budget_min,
-                                max: item.budget_max,
-                                currencyCode: item.currency_code,
-                              })}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-5 rounded-[1.5rem] bg-white p-5 ring-1 ring-slate-200">
-                          <p className="text-sm font-semibold text-slate-700">
-                            Job description
-                          </p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                            {item.description?.trim() || "No description provided."}
-                          </p>
-                        </div>
-
-                        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Visibility</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {item.visibility || "Not specified"}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Submitted</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {formatDateSafe(item.created_at)}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Updated</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {formatDateSafe(item.updated_at) || "Not yet updated"}
-                            </p>
-                          </div>
-
-                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                            <p className="text-sm text-slate-500">Expires</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {formatDateSafe(item.expires_at) || "Will be set on approval"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="w-full xl:max-w-xs">
-                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                          <p className="text-sm font-medium text-slate-500">Review actions</p>
-                          <div className="mt-4">
-                            <AdminJobAction
-                              adminUserId={user.id}
-                              jobId={item.id}
-                              currentStatus={item.status || "pending"}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-8 text-center">
-                  <h3 className="text-xl font-bold text-slate-900">No pending jobs</h3>
-                  <p className="mt-2 text-sm text-slate-600">
-                    New job submissions waiting for review will appear here first.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <ProcessEmailQueueButton />
         </div>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-2">
@@ -740,6 +584,167 @@ export default async function AdminPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <div className="rounded-[2rem] border border-amber-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-medium text-amber-700">Priority queue</p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-900">
+                  Jobs pending review
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-slate-600">
+                  These jobs were submitted for admin review and should be checked first.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+                {pendingJobs.length} pending
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-5">
+              {pendingJobs.length > 0 ? (
+                pendingJobs.map((item) => (
+                  <article
+                    key={item.id}
+                    className="rounded-[1.75rem] border border-amber-200 bg-amber-50/40 p-5"
+                  >
+                    <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h3 className="text-2xl font-bold text-slate-900">
+                            {item.title || "Untitled job"}
+                          </h3>
+
+                          {item.category ? (
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                              {item.category}
+                            </span>
+                          ) : null}
+
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClasses(
+                              item.status
+                            )}`}
+                          >
+                            {item.status || "unknown"}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Hirer</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {item.hirer_id ? hirerNameMap[item.hirer_id] || "Hirer" : "Hirer"}
+                            </p>
+                            {item.hirer_id && hirerIndustryMap[item.hirer_id] ? (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {hirerIndustryMap[item.hirer_id]}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Location</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatLocation({
+                                country: item.country,
+                                region: item.region,
+                                city: item.city,
+                                postcode: item.postcode,
+                                postcodePrefix: item.postcode_prefix,
+                                postcodeFull: item.postcode_full,
+                                areaSlug: item.area_slug,
+                              })}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Work type</p>
+                            <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
+                              {formatWorkType(item.location_type)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Budget</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatBudget({
+                                min: item.budget_min,
+                                max: item.budget_max,
+                                currencyCode: item.currency_code,
+                              })}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 rounded-[1.5rem] bg-white p-5 ring-1 ring-slate-200">
+                          <p className="text-sm font-semibold text-slate-700">
+                            Job description
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">
+                            {item.description?.trim() || "No description provided."}
+                          </p>
+                        </div>
+
+                        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Visibility</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {item.visibility || "Not specified"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Submitted</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatDateSafe(item.created_at)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Updated</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatDateSafe(item.updated_at) || "Not yet updated"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                            <p className="text-sm text-slate-500">Expires</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatDateSafe(item.expires_at) || "Will be set on approval"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="w-full xl:max-w-xs">
+                        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                          <p className="text-sm font-medium text-slate-500">Review actions</p>
+                          <div className="mt-4">
+                            <AdminJobAction
+                              adminUserId={user.id}
+                              jobId={item.id}
+                              currentStatus={item.status || "pending"}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-8 text-center">
+                  <h3 className="text-xl font-bold text-slate-900">No pending jobs</h3>
+                  <p className="mt-2 text-sm text-slate-600">
+                    New job submissions waiting for review will appear here first.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

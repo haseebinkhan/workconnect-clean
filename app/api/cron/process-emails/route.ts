@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/send";
 
@@ -10,20 +11,6 @@ const adminSupabase = createAdminClient(
 const MAX_ATTEMPTS = 5;
 const BATCH_SIZE = 25;
 
-type EmailJob = {
-  id: string;
-  user_id: string | null;
-  to_email: string;
-  subject: string;
-  html: string;
-  email_type: string | null;
-  meta: Record<string, unknown> | null;
-  status: string;
-  attempts: number | null;
-  scheduled_for: string | null;
-  created_at: string;
-};
-
 export async function GET(req: Request) {
   return handleProcess(req);
 }
@@ -34,14 +21,36 @@ export async function POST(req: Request) {
 
 async function handleProcess(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const bearerOk =
-      authHeader === `Bearer ${process.env.EMAIL_QUEUE_SECRET}`;
-
+    // ✅ 1. allow Vercel cron
     const cronHeader = req.headers.get("x-vercel-cron");
-    const cronOk = Boolean(cronHeader);
+    const isCron = Boolean(cronHeader);
 
-    if (!bearerOk && !cronOk) {
+    // ✅ 2. allow admin user (for button)
+    let isAdminUser = false;
+
+    try {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("is_admin, role")
+          .eq("id", user.id)
+          .single();
+
+        if (profile?.is_admin || profile?.role === "admin") {
+          isAdminUser = true;
+        }
+      }
+    } catch {
+      // ignore auth errors
+    }
+
+    // ❌ block others
+    if (!isCron && !isAdminUser) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 }
@@ -52,9 +61,7 @@ async function handleProcess(req: Request) {
 
     const { data: jobs, error: fetchError } = await adminSupabase
       .from("email_jobs")
-      .select(
-        "id, user_id, to_email, subject, html, email_type, meta, status, attempts, scheduled_for, created_at"
-      )
+      .select("*")
       .eq("status", "pending")
       .or(`scheduled_for.is.null,scheduled_for.lte.${nowIso}`)
       .order("created_at", { ascending: true })
@@ -67,9 +74,7 @@ async function handleProcess(req: Request) {
       );
     }
 
-    const pendingJobs = (jobs || []) as EmailJob[];
-
-    if (pendingJobs.length === 0) {
+    if (!jobs || jobs.length === 0) {
       return NextResponse.json({
         success: true,
         processed: 0,
@@ -79,131 +84,75 @@ async function handleProcess(req: Request) {
       });
     }
 
-    const jobIds = pendingJobs.map((job) => job.id);
+    const jobIds = jobs.map((j) => j.id);
 
-    const { error: processingError } = await adminSupabase
+    await adminSupabase
       .from("email_jobs")
-      .update({
-        status: "processing",
-        processed_at: null,
-        error_message: null,
-      })
+      .update({ status: "processing" })
       .in("id", jobIds)
       .eq("status", "pending");
-
-    if (processingError) {
-      return NextResponse.json(
-        { success: false, message: processingError.message },
-        { status: 500 }
-      );
-    }
-
-    const { data: lockedJobs, error: lockedJobsError } = await adminSupabase
-      .from("email_jobs")
-      .select(
-        "id, user_id, to_email, subject, html, email_type, meta, status, attempts, scheduled_for, created_at"
-      )
-      .in("id", jobIds)
-      .eq("status", "processing")
-      .order("created_at", { ascending: true });
-
-    if (lockedJobsError) {
-      return NextResponse.json(
-        { success: false, message: lockedJobsError.message },
-        { status: 500 }
-      );
-    }
-
-    const jobsToProcess = (lockedJobs || []) as EmailJob[];
 
     let sent = 0;
     let failed = 0;
 
-    for (const job of jobsToProcess) {
+    for (const job of jobs) {
       try {
-        const sendResult = await sendEmail({
+        const result = await sendEmail({
           to: job.to_email,
           subject: job.subject,
           html: job.html,
         });
 
-        if (!sendResult.success) {
+        if (!result.success) {
           const attempts = (job.attempts || 0) + 1;
-          const errorMessage = sendResult.error || "Unknown send error";
 
           await adminSupabase
             .from("email_jobs")
             .update({
               status: attempts >= MAX_ATTEMPTS ? "failed" : "pending",
               attempts,
-              error_message: errorMessage,
-              processed_at:
-                attempts >= MAX_ATTEMPTS ? new Date().toISOString() : null,
+              error_message: result.error || "Send failed",
             })
             .eq("id", job.id);
 
-          failed += 1;
+          failed++;
           continue;
         }
 
-        const { error: sentUpdateError } = await adminSupabase
+        await adminSupabase
           .from("email_jobs")
           .update({
             status: "sent",
             processed_at: new Date().toISOString(),
-            error_message: null,
           })
           .eq("id", job.id);
 
-        if (sentUpdateError) {
-          const attempts = (job.attempts || 0) + 1;
-
-          await adminSupabase
-            .from("email_jobs")
-            .update({
-              status: attempts >= MAX_ATTEMPTS ? "failed" : "pending",
-              attempts,
-              error_message: sentUpdateError.message,
-              processed_at:
-                attempts >= MAX_ATTEMPTS ? new Date().toISOString() : null,
-            })
-            .eq("id", job.id);
-
-          failed += 1;
-          continue;
-        }
-
-        sent += 1;
-      } catch (error) {
+        sent++;
+      } catch (err) {
         const attempts = (job.attempts || 0) + 1;
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown send error";
 
         await adminSupabase
           .from("email_jobs")
           .update({
             status: attempts >= MAX_ATTEMPTS ? "failed" : "pending",
             attempts,
-            error_message: errorMessage,
-            processed_at:
-              attempts >= MAX_ATTEMPTS ? new Date().toISOString() : null,
+            error_message:
+              err instanceof Error ? err.message : "Unknown error",
           })
           .eq("id", job.id);
 
-        failed += 1;
+        failed++;
       }
     }
 
     return NextResponse.json({
       success: true,
-      processed: jobsToProcess.length,
+      processed: jobs.length,
       sent,
       failed,
       message: "Email queue processed.",
     });
   } catch (error) {
-    console.error("process-emails error:", error);
-
     return NextResponse.json(
       {
         success: false,
