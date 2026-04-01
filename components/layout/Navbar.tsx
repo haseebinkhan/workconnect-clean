@@ -355,10 +355,10 @@ function NavbarInner({
   );
 }
 
-export function NavbarWithSuspense(props: Props) {
+export default function Navbar(props: Props) {
   return (
     <Suspense fallback={null}>
-      <Navbar {...props} />
+      <NavbarInner {...props} />
     </Suspense>
   );
 }
