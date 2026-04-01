@@ -39,7 +39,7 @@ export default function BookingStatusActions({
         },
         body: JSON.stringify({
           bookingId,
-          nextStatus,
+          status: nextStatus,
         }),
       });
 
