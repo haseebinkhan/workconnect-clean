@@ -338,28 +338,18 @@ export async function POST(req: Request) {
     ]);
 
     if (workerUserProfile.email) {
-      await enqueueEmail([
-        {
-          userId: workerUserProfile.id,
-          toEmail: workerUserProfile.email,
-          subject: "New work request received",
-          html: newRequestEmail({
-            workerName: workerUserProfile.full_name || "Worker",
-            hirerName: hirerProfile.full_name || "Hirer",
-            requestTitle: title,
-            message,
-            meetingTime: meetingText,
-          }),
-          meta: {
-            booking_id: booking.id,
-            worker_user_id: workerUserId,
-            hirer_user_id: user.id,
-            preferred_meeting_at: preferredMeetingAt,
-            meeting_text: meetingText,
-            title,
-          },
-        },
-      ]);
+      await enqueueEmail({
+        userId: workerUserProfile.id,
+        toEmail: workerUserProfile.email,
+        subject: "New work request received",
+        html: queueNewRequestEmail({
+          workerName: workerUserProfile.full_name || "Worker",
+          hirerName: hirerProfile.full_name || "Hirer",
+          requestTitle: title,
+          message,
+          meetingTime: meetingText,
+        }),
+      });
     }
 
     return NextResponse.json({
