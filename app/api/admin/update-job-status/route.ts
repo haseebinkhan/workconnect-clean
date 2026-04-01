@@ -3,10 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/email/queue";
 import {
-  jobApprovedEmail,
-  jobPausedEmail,
-  jobRejectedEmail,
-  newRegionalJobEmail,
+  queueJobApprovedEmail,
+  queueJobPausedEmail,
+  queueJobRejectedEmail,
+  queueNewRegionalJobEmail,
 } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
