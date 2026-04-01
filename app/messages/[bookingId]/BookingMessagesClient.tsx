@@ -285,29 +285,32 @@ export default function BookingMessagesClient({
     }
   }
 
-  async function handleRequestAction(action: string) {
-    try {
-      setWorking(true);
-      setErrorMessage("");
+async function handleRequestAction(action: string) {
+  try {
+    setWorking(true);
+    setErrorMessage("");
 
-      const isProgressAction =
-        action === "start_work" ||
-        action === "mark_done" ||
-        action === "complete_work" ||
-        action === "cancel_request";
+    const isProgressAction =
+      action === "start_work" ||
+      action === "mark_done" ||
+      action === "complete_work";
 
-      const endpoint = isProgressAction
-        ? "/api/bookings/progress"
-        : "/api/bookings/update-status";
+    if (isProgressAction) {
+      const progressStatus =
+        action === "start_work"
+          ? "in_progress"
+          : action === "mark_done"
+          ? "worker_marked_done"
+          : "completed";
 
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/bookings/update-status", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           bookingId,
-          action,
+          status: progressStatus,
         }),
       });
 
@@ -325,13 +328,55 @@ export default function BookingMessagesClient({
 
       await refreshThread();
       router.refresh();
-    } catch (error) {
-      console.error("request action error:", error);
-      setErrorMessage("Could not update request.");
-    } finally {
-      setWorking(false);
+      return;
     }
+
+    const directStatus =
+      action === "accepted"
+        ? "accepted"
+        : action === "cancel_request"
+        ? "cancelled"
+        : action === "rejected"
+        ? "rejected"
+        : "";
+
+    if (!directStatus) {
+      setErrorMessage("Invalid action.");
+      return;
+    }
+
+    const response = await fetch("/api/bookings/update-status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        bookingId,
+        status: directStatus,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setErrorMessage(result?.error || "Could not update request.");
+      return;
+    }
+
+    setBooking((prev) => ({
+      ...prev,
+      status: result.status || prev.status,
+    }));
+
+    await refreshThread();
+    router.refresh();
+  } catch (error) {
+    console.error("request action error:", error);
+    setErrorMessage("Could not update request.");
+  } finally {
+    setWorking(false);
   }
+}
 
   const canAccept = isWorker && booking.status === "pending";
   const canWorkerCancel =
@@ -342,7 +387,7 @@ export default function BookingMessagesClient({
     isHirer &&
     booking.status !== "completed" &&
     booking.status !== "cancelled";
-  const canStartWork = isHirer && booking.status === "accepted";
+const canStartWork = isWorker && booking.status === "accepted";
   const canMarkDone = isWorker && booking.status === "in_progress";
   const canComplete = isHirer && booking.status === "worker_marked_done";
 
