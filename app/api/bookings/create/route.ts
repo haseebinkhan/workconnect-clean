@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { buildAccess } from "@/lib/access";
 import { enqueueEmail } from "@/lib/email/queue";
-import { newRequestEmail } from "@/lib/email/events";
+import { queueNewRequestEmail } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -344,7 +344,7 @@ export async function POST(req: Request) {
           userId: workerUserProfile.id,
           toEmail: workerUserProfile.email,
           subject: "New work request received",
-          html: queuenewRequestEmail({
+          html: newRequestEmail({
             workerName: workerUserProfile.full_name || "Worker",
             hirerName: hirerProfile.full_name || "Hirer",
             requestTitle: title,
