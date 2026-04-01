@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { enqueueEmails } from "@/lib/email/queue";
+import { enqueueEmail } from "@/lib/email/queue";
 import {
   bookingAcceptedEmail,
   bookingCancelledEmail,
@@ -222,7 +222,7 @@ export async function POST(req: Request) {
       }
 
       if (emailJobs.length > 0) {
-        await enqueueEmails(emailJobs);
+        await enqueueEmail(emailJobs);
       }
 
       return NextResponse.json({
@@ -295,7 +295,7 @@ export async function POST(req: Request) {
     ]);
 
     if (notifyUser?.email) {
-      await enqueueEmails([
+      await enqueueEmail([
         {
           kind: "booking_cancelled",
           userId: notifyUser.id,
