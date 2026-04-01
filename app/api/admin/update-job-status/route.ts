@@ -2,11 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/email/queue";
-import {
-  queueJobApprovedEmail,
-  queueJobPausedEmail,
-  queueJobRejectedEmail,
-  } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -104,6 +99,115 @@ function formatBudget({
   }
 
   return "Budget not specified";
+}
+
+function emailShell(title: string, body: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:24px;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+        <div style="padding:24px;">
+          <h2 style="margin:0 0 16px; color:#0f172a;">${title}</h2>
+          <div style="color:#334155; font-size:15px; line-height:1.7;">
+            ${body}
+          </div>
+          <p style="margin-top:24px; color:#64748b; font-size:13px;">
+            WorkConnect
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function jobApprovedEmail({
+  hirerName,
+  jobTitle,
+}: {
+  hirerName: string;
+  jobTitle: string;
+}) {
+  return emailShell(
+    "Your WorkConnect job is now live",
+    `<p>Hi ${hirerName},</p>
+     <p>Your job <strong>${jobTitle}</strong> has been approved and is now live on WorkConnect.</p>
+     <p>Workers in the relevant area can now view it.</p>`
+  );
+}
+
+function jobPausedEmail({
+  hirerName,
+  jobTitle,
+  reason,
+}: {
+  hirerName: string;
+  jobTitle: string;
+  reason: string;
+}) {
+  return emailShell(
+    "Your WorkConnect job has been paused",
+    `<p>Hi ${hirerName},</p>
+     <p>Your job <strong>${jobTitle}</strong> has been paused.</p>
+     <p><strong>Reason:</strong> ${reason}</p>`
+  );
+}
+
+function jobRejectedEmail({
+  hirerName,
+  jobTitle,
+  reason,
+}: {
+  hirerName: string;
+  jobTitle: string;
+  reason: string;
+}) {
+  return emailShell(
+    "Your WorkConnect job was not approved",
+    `<p>Hi ${hirerName},</p>
+     <p>Your job <strong>${jobTitle}</strong> was not approved.</p>
+     <p><strong>Reason:</strong> ${reason}</p>`
+  );
+}
+
+function newRegionalJobEmail({
+  userName,
+  jobTitle,
+  category,
+  location,
+  budget,
+}: {
+  userName: string;
+  jobTitle: string;
+  category: string;
+  location: string;
+  budget: string;
+}) {
+  return emailShell(
+    "New WorkConnect job in your area",
+    `<p>Hi ${userName},</p>
+     <p>A new job is now live in your area.</p>
+     <p><strong>Title:</strong> ${jobTitle}</p>
+     <p><strong>Category:</strong> ${category}</p>
+     <p><strong>Location:</strong> ${location}</p>
+     <p><strong>Budget:</strong> ${budget}</p>`
+  );
+}
+
+async function queueSingleEmail(job: {
+  kind: string;
+  userId?: string;
+  toEmail: string;
+  subject: string;
+  html: string;
+  meta?: Record<string, unknown>;
+}) {
+  await enqueueEmail({
+    kind: job.kind,
+    userId: job.userId,
+    toEmail: job.toEmail,
+    subject: job.subject,
+    html: job.html,
+    meta: job.meta,
+  });
 }
 
 export async function POST(req: Request) {
@@ -312,10 +416,8 @@ export async function POST(req: Request) {
           hirerProfile.contact_name ||
           "there";
 
-        const emailJobs = [];
-
         if (status === "open") {
-          emailJobs.push({
+          await queueSingleEmail({
             kind: "job_approved",
             userId: hirerAccount.id,
             toEmail: hirerAccount.email,
@@ -333,7 +435,7 @@ export async function POST(req: Request) {
         }
 
         if (status === "paused") {
-          emailJobs.push({
+          await queueSingleEmail({
             kind: "job_paused",
             userId: hirerAccount.id,
             toEmail: hirerAccount.email,
@@ -353,7 +455,7 @@ export async function POST(req: Request) {
         }
 
         if (status === "rejected") {
-          emailJobs.push({
+          await queueSingleEmail({
             kind: "job_rejected",
             userId: hirerAccount.id,
             toEmail: hirerAccount.email,
@@ -370,10 +472,6 @@ export async function POST(req: Request) {
               reason: reason || "Please review your job post.",
             },
           });
-        }
-
-        if (emailJobs.length > 0) {
-          await enqueueEmail(emailJobs);
         }
       }
     }
@@ -432,8 +530,8 @@ export async function POST(req: Request) {
           await adminSupabase.from("notifications").insert(batch);
         }
 
-        await enqueueEmail(
-          audience.map((item) => ({
+        for (const item of audience) {
+          await queueSingleEmail({
             kind: "new_job_in_area",
             userId: item.id,
             toEmail: item.email,
@@ -452,8 +550,8 @@ export async function POST(req: Request) {
               location: locationText,
               budget: budgetText,
             },
-          }))
-        );
+          });
+        }
       }
     }
 
@@ -480,4 +578,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+} exactly correct?
