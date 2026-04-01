@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { buildAccess } from "@/lib/access";
-import { enqueueEmails } from "@/lib/email/queue";
+import { enqueueEmail } from "@/lib/email/queue";
 import { newRequestEmail } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
@@ -338,7 +338,7 @@ export async function POST(req: Request) {
     ]);
 
     if (workerUserProfile.email) {
-      await enqueueEmails([
+      await enqueueEmail([
         {
           kind: "new_request_received",
           userId: workerUserProfile.id,
