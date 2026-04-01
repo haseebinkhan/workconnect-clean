@@ -23,13 +23,22 @@ export async function POST(request: Request) {
       return json("Unauthorized.", 401);
     }
 
-    const { data: me } = await supabase
+    const { data: me, error: meError } = await supabase
       .from("profiles")
-      .select("id, is_admin")
+      .select("id, is_admin, role, is_active")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (!me?.is_admin) {
+    if (meError) {
+      return json(meError.message, 500);
+    }
+
+    const isAdmin =
+      !!me &&
+      me.is_active === true &&
+      (me.is_admin === true || me.role === "admin");
+
+    if (!isAdmin) {
       return json("Forbidden.", 403);
     }
 
@@ -43,14 +52,29 @@ export async function POST(request: Request) {
       return json("No users selected.", 400);
     }
 
+    if (userIds.includes(user.id)) {
+      return json("You cannot delete your own admin account.", 400);
+    }
+
     const adminSupabase = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
     for (const userId of userIds) {
+      const { data: targetProfile } = await adminSupabase
+        .from("profiles")
+        .select("id, is_admin, role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (targetProfile?.is_admin === true || targetProfile?.role === "admin") {
+        return json("Cannot delete another admin.", 400);
+      }
+
       await adminSupabase.from("worker_profiles").delete().eq("user_id", userId);
       await adminSupabase.from("hirer_profiles").delete().eq("user_id", userId);
+      await adminSupabase.from("notifications").delete().eq("user_id", userId);
       await adminSupabase.from("profiles").delete().eq("id", userId);
 
       const { error } = await adminSupabase.auth.admin.deleteUser(userId);
@@ -66,4 +90,3 @@ export async function POST(request: Request) {
     return json("Could not delete user.", 500);
   }
 }
-

@@ -1,9 +1,16 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+function getSafeRedirectTarget(nextPath: string | null) {
+  if (!nextPath) return "/dashboard";
+  if (!nextPath.startsWith("/")) return "/dashboard";
+  if (nextPath.startsWith("//")) return "/dashboard";
+  return nextPath;
+}
 
 function LoginPageInner() {
   const searchParams = useSearchParams();
@@ -16,11 +23,24 @@ function LoginPageInner() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const nextPath = searchParams.get("next");
-  const redirectTarget =
-    nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard";
+  const redirectTarget = getSafeRedirectTarget(nextPath);
+
+  const signupHref = nextPath
+    ? `/auth/signup?next=${encodeURIComponent(redirectTarget)}`
+    : "/auth/signup";
+
+  const resetPasswordHref = nextPath
+    ? `/auth/reset-password?next=${encodeURIComponent(redirectTarget)}`
+    : "/auth/reset-password";
 
   useEffect(() => {
     let mounted = true;
+
+    function goToTarget() {
+      if (typeof window !== "undefined") {
+        window.location.href = redirectTarget;
+      }
+    }
 
     const timer = setTimeout(() => {
       if (mounted) {
@@ -37,7 +57,7 @@ function LoginPageInner() {
         if (!mounted) return;
 
         if (session?.user) {
-          window.location.href = redirectTarget;
+          goToTarget();
           return;
         }
 
@@ -65,7 +85,7 @@ function LoginPageInner() {
       }
 
       if (session?.user) {
-        window.location.href = redirectTarget;
+        goToTarget();
       }
     });
 
@@ -223,7 +243,7 @@ function LoginPageInner() {
                     </label>
 
                     <Link
-                      href="/auth/reset-password"
+                      href={resetPasswordHref}
                       className="text-sm font-semibold text-indigo-600 transition hover:text-indigo-700"
                     >
                       Forgot password?
@@ -253,7 +273,7 @@ function LoginPageInner() {
                 <div className="text-center text-sm text-slate-600">
                   Don&apos;t have an account?{" "}
                   <Link
-                    href="/auth/signup"
+                    href={signupHref}
                     className="font-semibold text-indigo-600 transition hover:text-indigo-700"
                   >
                     Create one

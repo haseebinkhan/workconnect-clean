@@ -1,3 +1,7 @@
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+  "https://workconnect.uk";
+
 function escapeHtml(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -7,14 +11,45 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#39;");
 }
 
+function buildLoginUrl(nextPath = "/dashboard") {
+  const safeNext = nextPath.startsWith("/") ? nextPath : "/dashboard";
+  return `${APP_URL}/auth/login?next=${encodeURIComponent(safeNext)}`;
+}
+
+function buildButton(url: string, label: string) {
+  return `
+    <div style="margin-top:24px;">
+      <a
+        href="${escapeHtml(url)}"
+        style="
+          display:inline-block;
+          background:#0f172a;
+          color:#ffffff;
+          text-decoration:none;
+          padding:12px 18px;
+          border-radius:12px;
+          font-weight:600;
+          font-size:14px;
+        "
+      >
+        ${escapeHtml(label)}
+      </a>
+    </div>
+  `;
+}
+
 function wrapEmailTemplate({
   title,
   intro,
   rows,
+  buttonLabel,
+  buttonUrl,
 }: {
   title: string;
   intro: string;
   rows?: Array<{ label: string; value: string | null | undefined }>;
+  buttonLabel?: string;
+  buttonUrl?: string;
 }) {
   const safeTitle = escapeHtml(title);
   const safeIntro = escapeHtml(intro);
@@ -38,6 +73,9 @@ function wrapEmailTemplate({
           .join("")
       : "";
 
+  const buttonHtml =
+    buttonLabel && buttonUrl ? buildButton(buttonUrl, buttonLabel) : "";
+
   return `
     <div style="margin:0; padding:24px; background:#f8fafc; font-family:Arial, sans-serif;">
       <div style="max-width:620px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden;">
@@ -48,6 +86,7 @@ function wrapEmailTemplate({
           <p style="margin:0; color:#334155; font-size:15px; line-height:1.7;">
             ${safeIntro}
           </p>
+          ${buttonHtml}
         </div>
 
         ${
@@ -86,6 +125,8 @@ export function applicationAcceptedEmail({
       { label: "Job", value: jobTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "Log in to WorkConnect",
+    buttonUrl: buildLoginUrl("/my-applications"),
   });
 }
 
@@ -105,6 +146,8 @@ export function applicationRejectedEmail({
       { label: "Job", value: jobTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "Log in to WorkConnect",
+    buttonUrl: buildLoginUrl("/my-applications"),
   });
 }
 
@@ -112,10 +155,12 @@ export function bookingAcceptedEmail({
   userName,
   bookingTitle,
   location,
+  bookingId,
 }: {
   userName: string;
   bookingTitle: string;
   location?: string | null;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "Booking accepted",
@@ -124,6 +169,10 @@ export function bookingAcceptedEmail({
       { label: "Booking", value: bookingTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "View booking",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/my-requests"
+    ),
   });
 }
 
@@ -143,6 +192,8 @@ export function bookingRejectedEmail({
       { label: "Booking", value: bookingTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "Log in to WorkConnect",
+    buttonUrl: buildLoginUrl("/my-requests"),
   });
 }
 
@@ -151,11 +202,13 @@ export function bookingCancelledEmail({
   bookingTitle,
   location,
   reason,
+  bookingId,
 }: {
   userName: string;
   bookingTitle: string;
   location?: string | null;
   reason?: string | null;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "Booking cancelled",
@@ -165,6 +218,10 @@ export function bookingCancelledEmail({
       { label: "Location", value: location || "Not specified" },
       { label: "Reason", value: reason || "No reason provided" },
     ],
+    buttonLabel: "View details",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/my-requests"
+    ),
   });
 }
 
@@ -175,6 +232,7 @@ export function newRequestEmail({
   message,
   meetingTime,
   location,
+  bookingId,
 }: {
   workerName: string;
   hirerName: string;
@@ -182,6 +240,7 @@ export function newRequestEmail({
   message: string;
   meetingTime?: string | null;
   location?: string | null;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "New work request received",
@@ -192,6 +251,10 @@ export function newRequestEmail({
       { label: "Preferred meeting time", value: meetingTime || "Not specified" },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "Open request",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/requests"
+    ),
   });
 }
 
@@ -199,10 +262,12 @@ export function workStartedEmail({
   userName,
   bookingTitle,
   location,
+  bookingId,
 }: {
   userName: string;
   bookingTitle: string;
   location?: string | null;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "Work started",
@@ -211,6 +276,10 @@ export function workStartedEmail({
       { label: "Booking", value: bookingTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "View booking",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/my-requests"
+    ),
   });
 }
 
@@ -218,10 +287,12 @@ export function workMarkedDoneEmail({
   userName,
   bookingTitle,
   location,
+  bookingId,
 }: {
   userName: string;
   bookingTitle: string;
   location?: string | null;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "Work marked as done",
@@ -230,6 +301,10 @@ export function workMarkedDoneEmail({
       { label: "Booking", value: bookingTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "Review booking",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/my-requests"
+    ),
   });
 }
 
@@ -237,10 +312,12 @@ export function bookingCompletedEmail({
   userName,
   bookingTitle,
   location,
+  bookingId,
 }: {
   userName: string;
   bookingTitle: string;
   location?: string | null;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "Booking completed",
@@ -249,6 +326,10 @@ export function bookingCompletedEmail({
       { label: "Booking", value: bookingTitle },
       { label: "Location", value: location || "Not specified" },
     ],
+    buttonLabel: "Open booking",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/my-jobs"
+    ),
   });
 }
 
@@ -257,19 +338,25 @@ export function newMessageEmail({
   bookingTitle,
   senderName,
   preview,
+  bookingId,
 }: {
   userName: string;
   bookingTitle?: string | null;
   senderName: string;
   preview: string;
+  bookingId?: string | null;
 }) {
   return wrapEmailTemplate({
     title: "New message on WorkConnect",
     intro: `Hi ${userName}, you received a new message from ${senderName}.`,
     rows: [
-      { label: "Booking", value: bookingTitle || "General conversation" },
+      { label: "Booking", value: bookingTitle || "Booking conversation" },
       { label: "Message preview", value: preview },
     ],
+    buttonLabel: "Open conversation",
+    buttonUrl: buildLoginUrl(
+      bookingId ? `/messages/${bookingId}` : "/messages"
+    ),
   });
 }
 
@@ -284,6 +371,8 @@ export function jobApprovedEmail({
     title: "Job approved",
     intro: `Hi ${hirerName}, your job is now live.`,
     rows: [{ label: "Job", value: jobTitle }],
+    buttonLabel: "View my jobs",
+    buttonUrl: buildLoginUrl("/my-job-posts"),
   });
 }
 
@@ -303,6 +392,8 @@ export function jobPausedEmail({
       { label: "Job", value: jobTitle },
       { label: "Reason", value: reason || "No reason provided" },
     ],
+    buttonLabel: "View my jobs",
+    buttonUrl: buildLoginUrl("/my-job-posts"),
   });
 }
 
@@ -322,6 +413,8 @@ export function jobRejectedEmail({
       { label: "Job", value: jobTitle },
       { label: "Reason", value: reason || "No reason provided" },
     ],
+    buttonLabel: "View my jobs",
+    buttonUrl: buildLoginUrl("/my-job-posts"),
   });
 }
 
@@ -347,5 +440,7 @@ export function newRegionalJobEmail({
       { label: "Location", value: location || "Not specified" },
       { label: "Budget", value: budget || "Not specified" },
     ],
+    buttonLabel: "Browse jobs",
+    buttonUrl: buildLoginUrl("/jobs"),
   });
 }
