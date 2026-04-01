@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { buildAccess } from "@/lib/access";
 import { enqueueEmail } from "@/lib/email/queue";
-import { queueNewRequestEmail } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,6 +33,38 @@ function isValidUKFullPostcode(value: string) {
   const text = value.trim().toUpperCase();
   if (!text) return true;
   return /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/.test(text);
+}
+
+function newRequestEmail({
+  workerName,
+  hirerName,
+  requestTitle,
+  message,
+  meetingTime,
+}: {
+  workerName: string;
+  hirerName: string;
+  requestTitle: string;
+  message: string;
+  meetingTime: string;
+}) {
+  return `
+    <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:24px;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+        <div style="padding:24px;">
+          <h2 style="margin:0 0 16px; color:#0f172a;">New work request received</h2>
+          <p style="color:#334155;">Hi ${workerName},</p>
+          <p style="color:#334155;">
+            You received a new request from <strong>${hirerName}</strong>.
+          </p>
+          <p style="color:#334155;"><strong>Request title:</strong> ${requestTitle}</p>
+          <p style="color:#334155;"><strong>Message:</strong> ${message}</p>
+          <p style="color:#334155;"><strong>Preferred meeting time:</strong> ${meetingTime}</p>
+          <p style="margin-top:24px; color:#64748b; font-size:13px;">WorkConnect</p>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 export async function POST(req: Request) {
@@ -246,10 +277,7 @@ export async function POST(req: Request) {
       hirerProfile.postcode_prefix ||
       null;
 
-    const bookingAreaSlug =
-      areaSlug ||
-      workerProfile.area_slug ||
-      "united-kingdom";
+    const bookingAreaSlug = areaSlug || workerProfile.area_slug || "united-kingdom";
 
     const insertPayload: Record<string, unknown> = {
       hirer_user_id: user.id,
@@ -342,7 +370,7 @@ export async function POST(req: Request) {
         userId: workerUserProfile.id,
         toEmail: workerUserProfile.email,
         subject: "New work request received",
-        html: await queueNewRequestEmail({
+        html: newRequestEmail({
           workerName: workerUserProfile.full_name || "Worker",
           hirerName: hirerProfile.full_name || "Hirer",
           requestTitle: title,
