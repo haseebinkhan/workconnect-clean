@@ -16,8 +16,8 @@ export default async function AdminReportsPage() {
     .select("id, reporter_id, reported_user_id, booking_id, reason, details, status, created_at")
     .order("created_at", { ascending: false });
 
-  const reporterIds = [...new Set((reports || []).map((r) => r.reporter_id).filter(Boolean))];
-  const reportedIds = [...new Set((reports || []).map((r) => r.reported_user_id).filter(Boolean))];
+  const reporterIds = [...new Set((reports || []).map((r:any) => r.reporter_id).filter(Boolean))];
+  const reportedIds = [...new Set((reports || []).map((r:any) => r.reported_user_id).filter(Boolean))];
   const userIds = [...new Set([...reporterIds, ...reportedIds])];
 
   let names: Record<string, string | null> = {};
