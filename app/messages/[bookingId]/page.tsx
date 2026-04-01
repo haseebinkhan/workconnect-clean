@@ -3,13 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import BookingMessagesClient from "./BookingMessagesClient";
 
 type PageProps = {
-  params: {
+  params: Promise<{
     bookingId: string;
-  };
+  }>;
+};
+
+type ProfileItem = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
 };
 
 export default async function Page({ params }: PageProps) {
-  const bookingId = params.bookingId;
+  const { bookingId } = await params;
 
   const supabase = await createClient();
 
@@ -73,22 +79,20 @@ export default async function Page({ params }: PageProps) {
 
   const participantIds = [booking.hirer_user_id, booking.worker_user_id].filter(
     Boolean
-  );
+  ) as string[];
 
-  const { data: profiles } = participantIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .in("id", participantIds)
-    : {
-        data: [] as Array<{
-          id: string;
-          full_name: string | null;
-          email: string | null;
-        }>,
-      };
+  let profiles: ProfileItem[] = [];
 
-  const profileMap = new Map((profiles || []).map((item) => [item.id, item]));
+  if (participantIds.length > 0) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", participantIds);
+
+    profiles = (data || []) as ProfileItem[];
+  }
+
+  const profileMap = new Map(profiles.map((item) => [item.id, item]));
 
   const hirer = profileMap.get(booking.hirer_user_id);
   const worker = profileMap.get(booking.worker_user_id);
