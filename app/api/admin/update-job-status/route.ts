@@ -6,8 +6,7 @@ import {
   queueJobApprovedEmail,
   queueJobPausedEmail,
   queueJobRejectedEmail,
-  queueNewRegionalJobEmail,
-} from "@/lib/email/events";
+  } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
