@@ -2,41 +2,80 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/email/queue";
-import {
-  queueBookingAcceptedEmail,
-  bookingCancelledEmail,
-} from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-type ActionType = "accepted" | "cancelled";
+const ALLOWED_STATUSES = [
+  "accepted",
+  "rejected",
+  "cancelled",
+  "completed",
+  "in_progress",
+  "worker_marked_done",
+] as const;
 
-function normalizeAction(value: unknown): ActionType | null {
-  if (typeof value !== "string") return null;
-  const v = value.trim().toLowerCase();
-  if (v === "accepted" || v === "cancelled") return v;
-  return null;
+type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
+
+function normalizeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function buildLocationText({
-  country,
-  region,
-  city,
-  postcode,
-  areaSlug,
+function isAllowedStatus(value: string): value is AllowedStatus {
+  return ALLOWED_STATUSES.includes(value as AllowedStatus);
+}
+
+function bookingAcceptedEmail({
+  workerName,
+  hirerName,
+  bookingTitle,
 }: {
-  country?: string | null;
-  region?: string | null;
-  city?: string | null;
-  postcode?: string | null;
-  areaSlug?: string | null;
+  workerName: string;
+  hirerName: string;
+  bookingTitle: string;
 }) {
-  const parts = [city, region, country].filter(Boolean);
-  const base = parts.join(", ");
-  return base || postcode || areaSlug || "Location not specified";
+  return `
+    <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:24px;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+        <div style="padding:24px;">
+          <h2 style="margin:0 0 16px; color:#0f172a;">Booking accepted</h2>
+          <p style="color:#334155;">Hi ${hirerName},</p>
+          <p style="color:#334155;">
+            Your booking request <strong>${bookingTitle}</strong> has been accepted by ${workerName}.
+          </p>
+          <p style="margin-top:24px; color:#64748b; font-size:13px;">WorkConnect</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bookingCancelledEmail({
+  userName,
+  bookingTitle,
+  reason,
+}: {
+  userName: string;
+  bookingTitle: string;
+  reason: string;
+}) {
+  return `
+    <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:24px;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
+        <div style="padding:24px;">
+          <h2 style="margin:0 0 16px; color:#0f172a;">Booking update</h2>
+          <p style="color:#334155;">Hi ${userName},</p>
+          <p style="color:#334155;">
+            Booking <strong>${bookingTitle}</strong> has been updated.
+          </p>
+          <p style="color:#334155;"><strong>Reason:</strong> ${reason}</p>
+          <p style="margin-top:24px; color:#64748b; font-size:13px;">WorkConnect</p>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 export async function POST(req: Request) {
@@ -53,265 +92,333 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const bookingId =
-      typeof body?.bookingId === "string" ? body.bookingId.trim() : "";
-    const action = normalizeAction(body?.action);
 
-    if (!bookingId || !action) {
+    const bookingId = normalizeText(body?.bookingId);
+    const status = normalizeText(body?.status).toLowerCase();
+    const reason = normalizeText(body?.reason);
+
+    if (!bookingId || !status) {
       return NextResponse.json(
-        { error: "Missing bookingId or action." },
+        { error: "Missing bookingId or status." },
         { status: 400 }
+      );
+    }
+
+    if (!isAllowedStatus(status)) {
+      return NextResponse.json(
+        { error: "Invalid booking status." },
+        { status: 400 }
+      );
+    }
+
+    const { data: booking, error: bookingError } = await adminSupabase
+      .from("bookings")
+      .select(
+        `
+        id,
+        title,
+        message,
+        status,
+        hirer_user_id,
+        worker_user_id,
+        worker_profile_id,
+        preferred_meeting_at,
+        country,
+        region,
+        city,
+        postcode,
+        area_slug,
+        deleted_at
+      `
+      )
+      .eq("id", bookingId)
+      .maybeSingle();
+
+    if (bookingError || !booking || booking.deleted_at) {
+      return NextResponse.json({ error: "Booking not found." }, { status: 404 });
+    }
+
+    const isHirer = booking.hirer_user_id === user.id;
+    const isWorker = booking.worker_user_id === user.id;
+
+    if (!isHirer && !isWorker) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    if (status === "accepted" && !isWorker) {
+      return NextResponse.json(
+        { error: "Only the worker can accept a request." },
+        { status: 403 }
+      );
+    }
+
+    if (status === "rejected" && !isWorker) {
+      return NextResponse.json(
+        { error: "Only the worker can reject a request." },
+        { status: 403 }
+      );
+    }
+
+    if (status === "cancelled" && !isHirer && !isWorker) {
+      return NextResponse.json(
+        { error: "Only involved users can cancel a booking." },
+        { status: 403 }
+      );
+    }
+
+    if (status === "worker_marked_done" && !isWorker) {
+      return NextResponse.json(
+        { error: "Only the worker can mark the booking as done." },
+        { status: 403 }
+      );
+    }
+
+    if (status === "completed" && !isHirer) {
+      return NextResponse.json(
+        { error: "Only the hirer can complete the booking." },
+        { status: 403 }
+      );
+    }
+
+    if (status === "in_progress" && !isWorker) {
+      return NextResponse.json(
+        { error: "Only the worker can start the booking." },
+        { status: 403 }
       );
     }
 
     const now = new Date().toISOString();
 
-    const { data: booking, error: bookingError } = await adminSupabase
+    const updatePayload: Record<string, unknown> = {
+      status,
+      updated_at: now,
+    };
+
+    if (status === "cancelled") {
+      updatePayload.cancelled_at = now;
+    }
+
+    if (status === "completed") {
+      updatePayload.completed_at = now;
+    }
+
+    const { error: updateError } = await adminSupabase
       .from("bookings")
-      .select(`
-        id,
-        title,
-        status,
-        hirer_user_id,
-        worker_user_id,
-        deleted_at,
-        country,
-        region,
-        city,
-        postcode,
-        area_slug
-      `)
-      .eq("id", bookingId)
-      .maybeSingle();
+      .update(updatePayload)
+      .eq("id", bookingId);
 
-    if (bookingError || !booking || booking.deleted_at) {
-      return NextResponse.json({ error: "Request not found." }, { status: 404 });
+    if (updateError) {
+      return NextResponse.json(
+        { error: updateError.message || "Could not update booking." },
+        { status: 400 }
+      );
     }
 
-    const isWorker = booking.worker_user_id === user.id;
-    const isHirer = booking.hirer_user_id === user.id;
-
-    if (!isWorker && !isHirer) {
-      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
-    }
-
-    const { data: hirerAccount } = await adminSupabase
+    const { data: hirerProfile } = await adminSupabase
       .from("profiles")
       .select("id, full_name, email")
       .eq("id", booking.hirer_user_id)
       .maybeSingle();
 
-    const { data: workerAccount } = await adminSupabase
+    const { data: workerProfile } = await adminSupabase
       .from("profiles")
       .select("id, full_name, email")
       .eq("id", booking.worker_user_id)
       .maybeSingle();
 
-    const locationText = buildLocationText({
-      country: booking.country,
-      region: booking.region,
-      city: booking.city,
-      postcode: booking.postcode,
-      areaSlug: booking.area_slug,
-    });
+    const bookingTitle = booking.title || "Untitled booking";
 
-    if (booking.status === "completed" || booking.status === "in_progress") {
-      return NextResponse.json(
-        { error: "This request can no longer be changed here." },
-        { status: 409 }
-      );
-    }
-
-    if (action === "accepted") {
-      if (!isWorker) {
-        return NextResponse.json(
-          { error: "Only the worker can accept this request." },
-          { status: 403 }
-        );
-      }
-
-      if (booking.status !== "pending") {
-        return NextResponse.json(
-          { error: "Only pending requests can be accepted." },
-          { status: 409 }
-        );
-      }
-
-      const { error: updateError } = await adminSupabase
-        .from("bookings")
-        .update({
-          status: "accepted",
-          seen_by_worker: true,
-          seen_by_hirer: false,
-          updated_at: now,
-        })
-        .eq("id", booking.id);
-
-      if (updateError) {
-        return NextResponse.json(
-          { error: updateError.message },
-          { status: 400 }
-        );
-      }
-
+    if (status === "accepted") {
       await adminSupabase.from("notifications").insert([
         {
           user_id: booking.hirer_user_id,
-          type: "worker_request_accepted",
-          title: "Request accepted",
-          body: `Your request "${booking.title}" was accepted.`,
+          type: "booking_accepted",
+          title: "Booking accepted",
+          body: `Your request "${bookingTitle}" has been accepted.`,
           meta: {
             booking_id: booking.id,
-            status: "accepted",
-            location: locationText,
-            updated_at: now,
+            status,
+            created_at: now,
           },
         },
         {
           user_id: booking.worker_user_id,
-          type: "worker_request_status",
-          title: "You accepted a request",
-          body: `You accepted "${booking.title}".`,
+          type: "booking_status_updated",
+          title: "You accepted a booking",
+          body: `You accepted booking "${bookingTitle}".`,
           meta: {
             booking_id: booking.id,
-            status: "accepted",
-            location: locationText,
-            updated_at: now,
+            status,
+            created_at: now,
           },
         },
       ]);
 
-      const emailJobs = [];
-
-      if (hirerAccount?.email) {
-        emailJobs.push({
-          kind: "booking_accepted",
-          userId: hirerAccount.id,
-          toEmail: hirerAccount.email,
-          subject: "Your WorkConnect booking was accepted",
-          html: queueBookingAcceptedEmail({
-            userName: hirerAccount.full_name || "there",
-            bookingTitle: booking.title || "Booking",
-            location: locationText,
+      if (hirerProfile?.email) {
+        await enqueueEmail({
+          userId: hirerProfile.id,
+          toEmail: hirerProfile.email,
+          subject: "Your booking request was accepted",
+          html: bookingAcceptedEmail({
+            workerName: workerProfile?.full_name || "the worker",
+            hirerName: hirerProfile.full_name || "there",
+            bookingTitle,
           }),
+        });
+      }
+    }
+
+    if (status === "rejected") {
+      await adminSupabase.from("notifications").insert([
+        {
+          user_id: booking.hirer_user_id,
+          type: "booking_rejected",
+          title: "Booking rejected",
+          body: `Your request "${bookingTitle}" was rejected.`,
           meta: {
             booking_id: booking.id,
-            status: "accepted",
-            location: locationText,
+            status,
+            reason: reason || null,
+            created_at: now,
           },
+        },
+        {
+          user_id: booking.worker_user_id,
+          type: "booking_status_updated",
+          title: "You rejected a booking",
+          body: `You rejected booking "${bookingTitle}".`,
+          meta: {
+            booking_id: booking.id,
+            status,
+            reason: reason || null,
+            created_at: now,
+          },
+        },
+      ]);
+
+      if (hirerProfile?.email) {
+        await enqueueEmail({
+          userId: hirerProfile.id,
+          toEmail: hirerProfile.email,
+          subject: "Your booking request was rejected",
+          html: bookingCancelledEmail({
+            userName: hirerProfile.full_name || "there",
+            bookingTitle,
+            reason: reason || "The worker could not accept this request.",
+          }),
+        });
+      }
+    }
+
+    if (status === "cancelled") {
+      const cancelledBy = isHirer ? "hirer" : "worker";
+
+      await adminSupabase.from("notifications").insert([
+        {
+          user_id: booking.hirer_user_id,
+          type: "booking_cancelled",
+          title: "Booking cancelled",
+          body: `Booking "${bookingTitle}" was cancelled.`,
+          meta: {
+            booking_id: booking.id,
+            status,
+            cancelled_by: cancelledBy,
+            reason: reason || null,
+            created_at: now,
+          },
+        },
+        {
+          user_id: booking.worker_user_id,
+          type: "booking_cancelled",
+          title: "Booking cancelled",
+          body: `Booking "${bookingTitle}" was cancelled.`,
+          meta: {
+            booking_id: booking.id,
+            status,
+            cancelled_by: cancelledBy,
+            reason: reason || null,
+            created_at: now,
+          },
+        },
+      ]);
+
+      if (hirerProfile?.email) {
+        await enqueueEmail({
+          userId: hirerProfile.id,
+          toEmail: hirerProfile.email,
+          subject: "Booking cancelled",
+          html: bookingCancelledEmail({
+            userName: hirerProfile.full_name || "there",
+            bookingTitle,
+            reason: reason || "This booking has been cancelled.",
+          }),
         });
       }
 
-      if (workerAccount?.email) {
-        emailJobs.push({
-          kind: "booking_accepted_confirmation",
-          userId: workerAccount.id,
-          toEmail: workerAccount.email,
-          subject: "You accepted a WorkConnect booking",
-          html: queueBookingAcceptedEmail({
-            userName: workerAccount.full_name || "there",
-            bookingTitle: booking.title || "Booking",
-            location: locationText,
+      if (workerProfile?.email) {
+        await enqueueEmail({
+          userId: workerProfile.id,
+          toEmail: workerProfile.email,
+          subject: "Booking cancelled",
+          html: bookingCancelledEmail({
+            userName: workerProfile.full_name || "there",
+            bookingTitle,
+            reason: reason || "This booking has been cancelled.",
           }),
-          meta: {
-            booking_id: booking.id,
-            status: "accepted",
-            location: locationText,
-          },
         });
       }
+    }
 
-      if (emailJobs.length > 0) {
-        await enqueueEmail(emailJobs);
-      }
-
-      return NextResponse.json({
-        success: true,
-        status: "accepted",
-        message: "Request accepted successfully.",
+    if (status === "in_progress") {
+      await adminSupabase.from("notifications").insert({
+        user_id: booking.hirer_user_id,
+        type: "booking_in_progress",
+        title: "Booking started",
+        body: `Booking "${bookingTitle}" is now in progress.`,
+        meta: {
+          booking_id: booking.id,
+          status,
+          created_at: now,
+        },
       });
     }
 
-    if (booking.status === "cancelled") {
-      return NextResponse.json(
-        { error: "This request is already cancelled." },
-        { status: 409 }
-      );
-    }
-
-    const { error: cancelError } = await adminSupabase
-      .from("bookings")
-      .update({
-        status: "cancelled",
-        seen_by_worker: isWorker,
-        seen_by_hirer: isHirer,
-        updated_at: now,
-      })
-      .eq("id", booking.id);
-
-    if (cancelError) {
-      return NextResponse.json(
-        { error: cancelError.message },
-        { status: 400 }
-      );
-    }
-
-    const notifyUserId = isWorker
-      ? booking.hirer_user_id
-      : booking.worker_user_id;
-
-    const notifyUser = isWorker ? hirerAccount : workerAccount;
-    const actorName = isWorker
-      ? workerAccount?.full_name || "Worker"
-      : hirerAccount?.full_name || "Hirer";
-
-    await adminSupabase.from("notifications").insert([
-      {
-        user_id: notifyUserId,
-        type: "worker_request_cancelled",
-        title: "Request cancelled",
-        body: `The request "${booking.title}" was cancelled.`,
+    if (status === "worker_marked_done") {
+      await adminSupabase.from("notifications").insert({
+        user_id: booking.hirer_user_id,
+        type: "booking_worker_marked_done",
+        title: "Worker marked booking as done",
+        body: `Booking "${bookingTitle}" was marked as done by the worker.`,
         meta: {
           booking_id: booking.id,
-          status: "cancelled",
-          cancelled_by: user.id,
-          cancelled_by_name: actorName,
-          location: locationText,
-          updated_at: now,
+          status,
+          created_at: now,
         },
-      },
-      {
-        user_id: user.id,
-        type: "worker_request_status",
-        title: "You cancelled a request",
-        body: `You cancelled "${booking.title}".`,
-        meta: {
-          booking_id: booking.id,
-          status: "cancelled",
-          location: locationText,
-          updated_at: now,
-        },
-      },
-    ]);
+      });
+    }
 
-    if (notifyUser?.email) {
-      await enqueueEmail([
+    if (status === "completed") {
+      await adminSupabase.from("notifications").insert([
         {
-          kind: "booking_cancelled",
-          userId: notifyUser.id,
-          toEmail: notifyUser.email,
-          subject: "A WorkConnect booking was cancelled",
-          html: bookingCancelledEmail({
-            userName: notifyUser.full_name || "there",
-            bookingTitle: booking.title || "Booking",
-            location: locationText,
-          }),
+          user_id: booking.hirer_user_id,
+          type: "booking_completed",
+          title: "Booking completed",
+          body: `You marked booking "${bookingTitle}" as completed.`,
           meta: {
             booking_id: booking.id,
-            status: "cancelled",
-            cancelled_by: user.id,
-            cancelled_by_name: actorName,
-            location: locationText,
+            status,
+            created_at: now,
+          },
+        },
+        {
+          user_id: booking.worker_user_id,
+          type: "booking_completed",
+          title: "Booking completed",
+          body: `Booking "${bookingTitle}" was marked as completed.`,
+          meta: {
+            booking_id: booking.id,
+            status,
+            created_at: now,
           },
         },
       ]);
@@ -319,11 +426,16 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      status: "cancelled",
-      message: "Request cancelled successfully.",
+      bookingId: booking.id,
+      status,
+      message: "Booking status updated successfully.",
     });
   } catch (error) {
     console.error("bookings/update-status error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Server error" },
+      { status: 500 }
+    );
   }
 }
