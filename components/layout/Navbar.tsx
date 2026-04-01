@@ -1,12 +1,13 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import NotificationBell from "@/components/layout/NotificationBell";
+
 type Props = {
   isLoggedIn: boolean;
   userId?: string;
@@ -18,7 +19,7 @@ type Props = {
   isAdmin?: boolean;
 };
 
-export default function Navbar({
+function NavbarInner({
   isLoggedIn,
   userId,
   fullName,
@@ -351,5 +352,13 @@ export default function Navbar({
         </>
       ) : null}
     </header>
+  );
+}
+
+export function NavbarWithSuspense(props: Props) {
+  return (
+    <Suspense fallback={null}>
+      <Navbar {...props} />
+    </Suspense>
   );
 }
