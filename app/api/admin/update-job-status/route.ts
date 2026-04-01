@@ -201,7 +201,6 @@ async function queueSingleEmail(job: {
   meta?: Record<string, unknown>;
 }) {
   await enqueueEmail({
-    kind: job.kind,
     userId: job.userId,
     toEmail: job.toEmail,
     subject: job.subject,
