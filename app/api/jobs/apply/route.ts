@@ -435,7 +435,6 @@ export async function POST(req: Request) {
 
       await enqueueEmail([
         {
-          kind: "new_application_received",
           userId: hirerAccount.id,
           toEmail: hirerAccount.email,
           subject: `New application for ${job.title || "your job"}`,
