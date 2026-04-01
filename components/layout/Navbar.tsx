@@ -6,8 +6,7 @@ import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import NotificationBell from "./NotificationBell";
-
+import NotificationBell from "@/components/layout/NotificationBell";
 type Props = {
   isLoggedIn: boolean;
   userId?: string;
