@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { enqueueEmails } from "@/lib/email/queue";
+import { enqueueEmail } from "@/lib/email/queue";
 import {
   jobApprovedEmail,
   jobPausedEmail,
@@ -374,7 +374,7 @@ export async function POST(req: Request) {
         }
 
         if (emailJobs.length > 0) {
-          await enqueueEmails(emailJobs);
+          await enqueueEmail(emailJobs);
         }
       }
     }
@@ -433,7 +433,7 @@ export async function POST(req: Request) {
           await adminSupabase.from("notifications").insert(batch);
         }
 
-        await enqueueEmails(
+        await enqueueEmail(
           audience.map((item) => ({
             kind: "new_job_in_area",
             userId: item.id,
