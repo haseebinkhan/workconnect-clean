@@ -1,5 +1,5 @@
 import {
-  applicationAcceptedEmail,
+  queueApplicationAcceptedEmail,
   applicationRejectedEmail,
   bookingAcceptedEmail,
   bookingCancelledEmail,
@@ -79,6 +79,7 @@ type QueueJobRejectedEmailInput = {
   reason: string;
 };
 
+
 export async function queueJobRejectedEmail({
   userId = null,
   toEmail,
@@ -122,7 +123,7 @@ export async function queueApplicationAcceptedEmail({
     userId,
     toEmail,
     subject: "Your application was accepted",
-    html: applicationAcceptedEmail({
+    html: queueApplicationAcceptedEmail({
       workerName,
       jobTitle,
       location,
@@ -313,4 +314,7 @@ export async function queueRegionalJobAlerts({
   }));
 
   return enqueueEmailsBulk(jobs);
+}
+export function newRegionalJobEmail({ userName, jobTitle }: any) {
+  return `<p>Hello ${userName}, new job: ${jobTitle}</p>`;
 }
