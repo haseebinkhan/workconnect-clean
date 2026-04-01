@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/email/queue";
 import {
-  bookingAcceptedEmail,
+  queueBookingAcceptedEmail,
   bookingCancelledEmail,
 } from "@/lib/email/events";
 
@@ -189,7 +189,7 @@ export async function POST(req: Request) {
           userId: hirerAccount.id,
           toEmail: hirerAccount.email,
           subject: "Your WorkConnect booking was accepted",
-          html: bookingAcceptedEmail({
+          html: queueBookingAcceptedEmail({
             userName: hirerAccount.full_name || "there",
             bookingTitle: booking.title || "Booking",
             location: locationText,
@@ -208,7 +208,7 @@ export async function POST(req: Request) {
           userId: workerAccount.id,
           toEmail: workerAccount.email,
           subject: "You accepted a WorkConnect booking",
-          html: bookingAcceptedEmail({
+          html: queueBookingAcceptedEmail({
             userName: workerAccount.full_name || "there",
             bookingTitle: booking.title || "Booking",
             location: locationText,
