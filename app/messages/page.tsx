@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,7 +19,7 @@ function compactText(value?: string | null, max = 120) {
   const text = (value || "").trim();
   if (!text) return "";
   if (text.length <= max) return text;
-  return `${text.slice(0, max).trim()}…`;
+  return `${text.slice(0, max).trim()}�`;
 }
 
 function statusClasses(status?: string | null) {
