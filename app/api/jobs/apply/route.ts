@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { autoCloseExpiredJobs } from "@/lib/jobs/autoCloseExpiredJobs";
-import { enqueueEmails } from "@/lib/email/queue";
+import { enqueueEmail } from "@/lib/email/queue";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -433,7 +433,7 @@ export async function POST(req: Request) {
         hirerProfile.contact_name ||
         "there";
 
-      await enqueueEmails([
+      await enqueueEmail([
         {
           kind: "new_application_received",
           userId: hirerAccount.id,
