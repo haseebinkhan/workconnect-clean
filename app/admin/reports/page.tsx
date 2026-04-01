@@ -27,12 +27,13 @@ export default async function AdminReportsPage() {
       .from("profiles")
       .select("id, full_name")
       .in("id", userIds);
-
-    names =
-      profiles?.reduce((acc, item) => {
-        acc[item.id] = item.full_name;
-        return acc;
-      }, {} as Record<string, string | null>) || {};
+names = profiles?.reduce(
+  (acc: Record<string, string | null>, item) => {
+    acc[item.id] = item.full_name;
+    return acc;
+  },
+  {} as Record<string, string | null>
+) || {};
   }
 
   if (error) {
