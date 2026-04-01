@@ -1,212 +1,111 @@
-import {
-  applicationAcceptedEmail,
-  applicationRejectedEmail,
-  bookingAcceptedEmail,
-  bookingCancelledEmail,
-  jobApprovedEmail,
-  jobPausedEmail,
-  jobRejectedEmail,
-  newRegionalJobEmail,
-  newRequestEmail,
-} from "@/lib/email/events";
+// ================= APPLICATION EMAILS =================
 
-import { enqueueEmail, enqueueEmailsBulk } from "@/lib/email/queue";
-
-/* ================= JOB EMAILS ================= */
-
-export async function queueJobApprovedEmail({
-  userId = null,
-  toEmail,
-  hirerName,
-  jobTitle,
-}: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Your WorkConnect job is now live",
-    html: jobApprovedEmail({ hirerName, jobTitle }),
-    emailType: "job_approved",
-    meta: { job_title: jobTitle },
-  });
-}
-
-export async function queueJobPausedEmail({
-  userId = null,
-  toEmail,
-  hirerName,
-  jobTitle,
-  reason,
-}: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Your WorkConnect job has been paused",
-    html: jobPausedEmail({ hirerName, jobTitle, reason }),
-    emailType: "job_paused",
-    meta: { job_title: jobTitle, reason },
-  });
-}
-
-export async function queueJobRejectedEmail({
-  userId = null,
-  toEmail,
-  hirerName,
-  jobTitle,
-  reason,
-}: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Your WorkConnect job was not approved",
-    html: jobRejectedEmail({ hirerName, jobTitle, reason }),
-    emailType: "job_rejected",
-    meta: { job_title: jobTitle, reason },
-  });
-}
-
-/* ================= APPLICATION EMAILS ================= */
-
-export async function queueApplicationAcceptedEmail({
-  userId = null,
-  toEmail,
+export function applicationAcceptedEmail({
   workerName,
   jobTitle,
   location,
 }: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Your application was accepted",
-    html: applicationAcceptedEmail({
-      workerName,
-      jobTitle,
-      location,
-    }),
-    emailType: "application_accepted",
-    meta: { job_title: jobTitle, location },
-  });
+  return `
+    <p>Hi ${workerName},</p>
+    <p>Your application for <b>${jobTitle}</b> has been accepted 🎉</p>
+    <p>Location: ${location}</p>
+  `;
 }
 
-export async function queueApplicationRejectedEmail({
-  userId = null,
-  toEmail,
+export function applicationRejectedEmail({
   workerName,
   jobTitle,
   location,
 }: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Application update",
-    html: applicationRejectedEmail({
-      workerName,
-      jobTitle,
-      location,
-    }),
-    emailType: "application_rejected",
-    meta: { job_title: jobTitle, location },
-  });
+  return `
+    <p>Hi ${workerName},</p>
+    <p>Your application for <b>${jobTitle}</b> was not selected.</p>
+    <p>Location: ${location}</p>
+  `;
 }
 
-/* ================= BOOKING EMAILS ================= */
+// ================= BOOKING EMAILS =================
 
-export async function queueBookingAcceptedEmail({
-  userId = null,
-  toEmail,
+export function bookingAcceptedEmail({
   userName,
   bookingTitle,
   location,
 }: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Booking accepted",
-    html: bookingAcceptedEmail({
-      userName,
-      bookingTitle,
-      location,
-    }),
-    emailType: "booking_accepted",
-    meta: { booking_title: bookingTitle, location },
-  });
+  return `
+    <p>Hi ${userName},</p>
+    <p>Your booking <b>${bookingTitle}</b> has been accepted.</p>
+    <p>${location}</p>
+  `;
 }
 
-export async function queueBookingCancelledEmail({
-  userId = null,
-  toEmail,
+export function bookingCancelledEmail({
   userName,
   bookingTitle,
   location,
 }: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "Booking cancelled",
-    html: bookingCancelledEmail({
-      userName,
-      bookingTitle,
-      location,
-    }),
-    emailType: "booking_cancelled",
-    meta: { booking_title: bookingTitle, location },
-  });
+  return `
+    <p>Hi ${userName},</p>
+    <p>Your booking <b>${bookingTitle}</b> was cancelled.</p>
+    <p>${location}</p>
+  `;
 }
 
-/* ================= REQUEST EMAIL ================= */
+// ================= JOB EMAILS =================
 
-export async function queueNewRequestEmail({
-  userId = null,
-  toEmail,
+export function jobApprovedEmail({ hirerName, jobTitle }: any) {
+  return `
+    <p>Hi ${hirerName},</p>
+    <p>Your job <b>${jobTitle}</b> is now live 🚀</p>
+  `;
+}
+
+export function jobPausedEmail({ hirerName, jobTitle, reason }: any) {
+  return `
+    <p>Hi ${hirerName},</p>
+    <p>Your job <b>${jobTitle}</b> has been paused.</p>
+    <p>Reason: ${reason}</p>
+  `;
+}
+
+export function jobRejectedEmail({ hirerName, jobTitle, reason }: any) {
+  return `
+    <p>Hi ${hirerName},</p>
+    <p>Your job <b>${jobTitle}</b> was rejected.</p>
+    <p>Reason: ${reason}</p>
+  `;
+}
+
+// ================= REQUEST EMAIL =================
+
+export function newRequestEmail({
   workerName,
   hirerName,
   requestTitle,
   message,
-  meetingTime = null,
+  meetingTime,
 }: any) {
-  return enqueueEmail({
-    userId,
-    toEmail,
-    subject: "New work request received",
-    html: newRequestEmail({
-      workerName,
-      hirerName,
-      requestTitle,
-      message,
-      meetingTime,
-    }),
-    emailType: "new_request",
-    meta: {
-      request_title: requestTitle,
-      meeting_time: meetingTime,
-    },
-  });
+  return `
+    <p>Hi ${workerName},</p>
+    <p>${hirerName} sent you a request: <b>${requestTitle}</b></p>
+    <p>${message}</p>
+    ${meetingTime ? `<p>Meeting: ${meetingTime}</p>` : ""}
+  `;
 }
 
-/* ================= REGIONAL JOB ALERT ================= */
+// ================= REGIONAL JOB =================
 
-export async function queueRegionalJobAlerts({
-  audience,
+export function newRegionalJobEmail({
+  userName,
   jobTitle,
   category,
   location,
   budget,
 }: any) {
-  if (!audience.length) return [];
-
-  const jobs = audience.map((item: any) => ({
-    userId: item.userId || null,
-    toEmail: item.toEmail,
-    subject: "New WorkConnect job in your area",
-    html: newRegionalJobEmail({
-      userName: item.userName,
-      jobTitle,
-      category,
-      location,
-      budget,
-    }),
-    emailType: "regional_job_alert",
-    meta: { job_title: jobTitle, category, location, budget },
-  }));
-
-  return enqueueEmailsBulk(jobs);
+  return `
+    <p>Hi ${userName},</p>
+    <p>New job in your area:</p>
+    <p><b>${jobTitle}</b></p>
+    <p>${category} - ${location}</p>
+    <p>Budget: ${budget}</p>
+  `;
 }
