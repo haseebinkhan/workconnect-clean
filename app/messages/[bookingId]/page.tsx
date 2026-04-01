@@ -2,12 +2,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BookingMessagesClient from "./BookingMessagesClient";
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ bookingId: string }>;
-}) {
-  const { bookingId } = await params;
+type PageProps = {
+  params: {
+    bookingId: string;
+  };
+};
+
+export default async function Page({ params }: PageProps) {
+  const bookingId = params.bookingId;
 
   const supabase = await createClient();
 

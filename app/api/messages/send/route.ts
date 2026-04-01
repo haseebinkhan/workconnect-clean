@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { enqueueEmail } from "@/lib/email/queue";
+import { newMessageEmail } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,7 +36,10 @@ export async function POST(req: Request) {
     }
 
     if (!content) {
-      return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Message cannot be empty." },
+        { status: 400 }
+      );
     }
 
     const { data: booking, error: bookingError } = await adminSupabase
@@ -51,7 +56,10 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (bookingError || !booking || booking.deleted_at) {
-      return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Conversation not found." },
+        { status: 404 }
+      );
     }
 
     const isHirer = booking.hirer_user_id === user.id;
@@ -108,8 +116,14 @@ export async function POST(req: Request) {
 
     const { data: senderProfile } = await adminSupabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, email")
       .eq("id", user.id)
+      .maybeSingle();
+
+    const { data: receiverProfile } = await adminSupabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("id", receiverId)
       .maybeSingle();
 
     const preview =
@@ -120,7 +134,9 @@ export async function POST(req: Request) {
       .insert({
         user_id: receiverId,
         type: "new_message",
-        title: booking.title ? `New message about "${booking.title}"` : "New message",
+        title: booking.title
+          ? `New message about "${booking.title}"`
+          : "New message",
         body: preview,
         meta: {
           booking_id: booking.id,
@@ -134,6 +150,30 @@ export async function POST(req: Request) {
 
     if (notificationError) {
       console.error("messages/send notification error:", notificationError);
+    }
+
+    if (receiverProfile?.email) {
+      await enqueueEmail({
+        userId: receiverProfile.id,
+        toEmail: receiverProfile.email,
+        subject: booking.title
+          ? `New message about "${booking.title}"`
+          : "New message on WorkConnect",
+        html: newMessageEmail({
+          userName: receiverProfile.full_name || "there",
+          bookingTitle: booking.title || "Booking conversation",
+          senderName: senderProfile?.full_name || "User",
+          preview,
+        }),
+        emailType: "new_message",
+        meta: {
+          booking_id: booking.id,
+          message_id: insertedMessage.id,
+          sender_id: user.id,
+          receiver_id: receiverId,
+          created_at: now,
+        },
+      });
     }
 
     return NextResponse.json({

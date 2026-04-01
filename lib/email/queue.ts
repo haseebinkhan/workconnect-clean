@@ -5,15 +5,75 @@ const adminSupabase = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type EmailMeta = Record<string, unknown>;
+
 type EnqueueEmailInput = {
   userId?: string | null;
   toEmail: string;
   subject: string;
   html: string;
   emailType?: string | null;
-  meta?: Record<string, any> | null;
+  meta?: EmailMeta | null;
   scheduledFor?: string | null;
 };
+
+type BulkEmailJob = {
+  userId?: string | null;
+  toEmail: string;
+  subject: string;
+  html: string;
+  emailType?: string | null;
+  meta?: EmailMeta | null;
+  scheduledFor?: string | null;
+};
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeSubject(value: string) {
+  return value.trim();
+}
+
+function normalizeHtml(value: string) {
+  return value.trim();
+}
+
+async function findExistingPendingJob(params: {
+  toEmail: string;
+  subject: string;
+  emailType?: string | null;
+  scheduledFor?: string | null;
+}) {
+  let query = adminSupabase
+    .from("email_jobs")
+    .select("id")
+    .eq("to_email", params.toEmail)
+    .eq("subject", params.subject)
+    .eq("status", "pending")
+    .limit(1);
+
+  if (params.emailType) {
+    query = query.eq("email_type", params.emailType);
+  } else {
+    query = query.is("email_type", null);
+  }
+
+  if (params.scheduledFor) {
+    query = query.eq("scheduled_for", params.scheduledFor);
+  } else {
+    query = query.is("scheduled_for", null);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    console.error("findExistingPendingJob error:", error);
+    return null;
+  }
+
+  return data;
+}
 
 export async function enqueueEmail({
   userId = null,
@@ -24,12 +84,23 @@ export async function enqueueEmail({
   meta = {},
   scheduledFor = null,
 }: EnqueueEmailInput) {
-  const cleanEmail = toEmail.trim().toLowerCase();
-  const cleanSubject = subject.trim();
-  const cleanHtml = html.trim();
+  const cleanEmail = normalizeEmail(toEmail);
+  const cleanSubject = normalizeSubject(subject);
+  const cleanHtml = normalizeHtml(html);
 
   if (!cleanEmail || !cleanSubject || !cleanHtml) {
     throw new Error("Missing required email queue fields.");
+  }
+
+  const existing = await findExistingPendingJob({
+    toEmail: cleanEmail,
+    subject: cleanSubject,
+    emailType,
+    scheduledFor,
+  });
+
+  if (existing) {
+    return existing;
   }
 
   const { data, error } = await adminSupabase
@@ -55,51 +126,89 @@ export async function enqueueEmail({
   return data;
 }
 
-type BulkEmailJob = {
-  userId?: string | null;
-  toEmail: string;
-  subject: string;
-  html: string;
-  emailType?: string | null;
-  meta?: Record<string, any> | null;
-  scheduledFor?: string | null;
-};
-
 export async function enqueueEmailsBulk(items: BulkEmailJob[]) {
   if (!items.length) {
     return [];
   }
 
-  const rows = items
+  const normalizedItems = items
     .map((item) => {
-      const toEmail = item.toEmail?.trim().toLowerCase() || "";
-      const subject = item.subject?.trim() || "";
-      const html = item.html?.trim() || "";
+      const cleanEmail = normalizeEmail(item.toEmail || "");
+      const cleanSubject = normalizeSubject(item.subject || "");
+      const cleanHtml = normalizeHtml(item.html || "");
 
-      if (!toEmail || !subject || !html) {
+      if (!cleanEmail || !cleanSubject || !cleanHtml) {
         return null;
       }
 
       return {
         user_id: item.userId || null,
-        to_email: toEmail,
-        subject,
-        html,
+        to_email: cleanEmail,
+        subject: cleanSubject,
+        html: cleanHtml,
         email_type: item.emailType || null,
         meta: item.meta || {},
         scheduled_for: item.scheduledFor || null,
         status: "pending",
       };
     })
-    .filter(Boolean);
+    .filter(
+      (
+        row
+      ): row is {
+        user_id: string | null;
+        to_email: string;
+        subject: string;
+        html: string;
+        email_type: string | null;
+        meta: EmailMeta;
+        scheduled_for: string | null;
+        status: "pending";
+      } => row !== null
+    );
 
-  if (!rows.length) {
+  if (!normalizedItems.length) {
+    return [];
+  }
+
+  const uniqueMap = new Map<string, (typeof normalizedItems)[number]>();
+
+  for (const row of normalizedItems) {
+    const key = [
+      row.to_email,
+      row.subject,
+      row.email_type || "",
+      row.scheduled_for || "",
+    ].join("::");
+
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, row);
+    }
+  }
+
+  const uniqueRows = Array.from(uniqueMap.values());
+  const rowsToInsert: typeof uniqueRows = [];
+
+  for (const row of uniqueRows) {
+    const existing = await findExistingPendingJob({
+      toEmail: row.to_email,
+      subject: row.subject,
+      emailType: row.email_type,
+      scheduledFor: row.scheduled_for,
+    });
+
+    if (!existing) {
+      rowsToInsert.push(row);
+    }
+  }
+
+  if (!rowsToInsert.length) {
     return [];
   }
 
   const { data, error } = await adminSupabase
     .from("email_jobs")
-    .insert(rows)
+    .insert(rowsToInsert)
     .select("id");
 
   if (error) {

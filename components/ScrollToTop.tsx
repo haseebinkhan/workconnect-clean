@@ -7,7 +7,18 @@ export default function ScrollToTop() {
   const pathname = usePathname();
 
   useEffect(() => {
-    window.scrollTo(0, 0);
+    const handleScroll = () => {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "instant", // smooth bhi use kar sakta hai
+      });
+    };
+
+    // thoda delay zaroori hai Next.js ke liye
+    const timeout = setTimeout(handleScroll, 50);
+
+    return () => clearTimeout(timeout);
   }, [pathname]);
 
   return null;

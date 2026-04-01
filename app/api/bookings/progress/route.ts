@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { enqueueEmail } from "@/lib/email/queue";
+import {
+  bookingCancelledEmail,
+  bookingCompletedEmail,
+  workMarkedDoneEmail,
+  workStartedEmail,
+} from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +19,14 @@ type ProgressAction =
   | "mark_done"
   | "complete_work"
   | "cancel_request";
+
+type AllowedStatus =
+  | "accepted"
+  | "rejected"
+  | "cancelled"
+  | "completed"
+  | "in_progress"
+  | "worker_marked_done";
 
 function normalizeAction(value: unknown): ProgressAction | null {
   if (typeof value !== "string") return null;
@@ -74,9 +89,10 @@ export async function POST(req: Request) {
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -104,8 +120,6 @@ export async function POST(req: Request) {
         city,
         postcode,
         area_slug,
-        budget_amount,
-        currency_code,
         hirer_user_id,
         worker_user_id,
         deleted_at
@@ -125,15 +139,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
-    const now = new Date().toISOString();
-    const locationText = buildLocationText({
-      country: booking.country,
-      region: booking.region,
-      city: booking.city,
-      postcode: booking.postcode,
-      areaSlug: booking.area_slug,
-    });
-
     const { data: hirerProfile } = await adminSupabase
       .from("profiles")
       .select("id, full_name, email")
@@ -146,16 +151,26 @@ export async function POST(req: Request) {
       .eq("id", booking.worker_user_id)
       .maybeSingle();
 
-    let nextStatus: string | null = null;
+    const now = new Date().toISOString();
+    const bookingTitle = booking.title || "Untitled booking";
+    const locationText = buildLocationText({
+      country: booking.country,
+      region: booking.region,
+      city: booking.city,
+      postcode: booking.postcode,
+      areaSlug: booking.area_slug,
+    });
+
+    let nextStatus: AllowedStatus | null = null;
     let notifyUserId: string | null = null;
     let notificationTitle = "";
     let notificationBody = "";
     let systemMessage = "";
 
     if (action === "start_work") {
-      if (!isHirer) {
+      if (!isWorker) {
         return NextResponse.json(
-          { error: "Only the hirer can start work." },
+          { error: "Only the worker can start work." },
           { status: 403 }
         );
       }
@@ -168,11 +183,11 @@ export async function POST(req: Request) {
       }
 
       nextStatus = "in_progress";
-      notifyUserId = booking.worker_user_id;
+      notifyUserId = booking.hirer_user_id;
       notificationTitle = "Work started";
-      notificationBody = `The booking "${booking.title}" has been marked as in progress.`;
+      notificationBody = `Booking "${bookingTitle}" is now in progress.`;
       systemMessage = [
-        `${hirerProfile?.full_name || "Hirer"} started work on "${booking.title || "this booking"}".`,
+        `${workerProfile?.full_name || "Worker"} started work on "${bookingTitle}".`,
         `Location: ${locationText}.`,
       ].join(" ");
     }
@@ -194,10 +209,10 @@ export async function POST(req: Request) {
 
       nextStatus = "worker_marked_done";
       notifyUserId = booking.hirer_user_id;
-      notificationTitle = "Worker marked job done";
-      notificationBody = `The worker marked "${booking.title}" as done. Please review and complete it.`;
+      notificationTitle = "Worker marked booking as done";
+      notificationBody = `The worker marked "${bookingTitle}" as done.`;
       systemMessage = [
-        `${workerProfile?.full_name || "Worker"} marked "${booking.title || "this booking"}" as done.`,
+        `${workerProfile?.full_name || "Worker"} marked "${bookingTitle}" as done.`,
         `Location: ${locationText}.`,
       ].join(" ");
     }
@@ -220,9 +235,9 @@ export async function POST(req: Request) {
       nextStatus = "completed";
       notifyUserId = booking.worker_user_id;
       notificationTitle = "Booking completed";
-      notificationBody = `The booking "${booking.title}" has been completed.`;
+      notificationBody = `The booking "${bookingTitle}" has been completed.`;
       systemMessage = [
-        `${hirerProfile?.full_name || "Hirer"} completed "${booking.title || "this booking"}".`,
+        `${hirerProfile?.full_name || "Hirer"} completed "${bookingTitle}".`,
         `Location: ${locationText}.`,
       ].join(" ");
     }
@@ -245,9 +260,13 @@ export async function POST(req: Request) {
       nextStatus = "cancelled";
       notifyUserId = isWorker ? booking.hirer_user_id : booking.worker_user_id;
       notificationTitle = "Booking cancelled";
-      notificationBody = `The booking "${booking.title}" has been cancelled.`;
+      notificationBody = `Booking "${bookingTitle}" was cancelled.`;
       systemMessage = [
-        `${isWorker ? workerProfile?.full_name || "Worker" : hirerProfile?.full_name || "Hirer"} cancelled "${booking.title || "this booking"}".`,
+        `${
+          isWorker
+            ? workerProfile?.full_name || "Worker"
+            : hirerProfile?.full_name || "Hirer"
+        } cancelled "${bookingTitle}".`,
         `Location: ${locationText}.`,
       ].join(" ");
     }
@@ -256,18 +275,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid action." }, { status: 400 });
     }
 
+    const updatePayload: Record<string, unknown> = {
+      status: nextStatus,
+      updated_at: now,
+      seen_by_hirer: isHirer,
+      seen_by_worker: isWorker,
+    };
+
+    if (nextStatus === "cancelled") {
+      updatePayload.cancelled_at = now;
+    }
+
+    if (nextStatus === "completed") {
+      updatePayload.completed_at = now;
+    }
+
     const { error: updateError } = await adminSupabase
       .from("bookings")
-      .update({
-        status: nextStatus,
-        seen_by_hirer: isHirer,
-        seen_by_worker: isWorker,
-        updated_at: now,
-      })
+      .update(updatePayload)
       .eq("id", booking.id);
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+      return NextResponse.json(
+        { error: updateError.message || "Could not update booking." },
+        { status: 400 }
+      );
     }
 
     if (notifyUserId) {
@@ -279,7 +311,7 @@ export async function POST(req: Request) {
         meta: {
           booking_id: booking.id,
           status: nextStatus,
-          title: booking.title,
+          title: bookingTitle,
           location: locationText,
           updated_by: user.id,
           updated_at: now,
@@ -290,9 +322,114 @@ export async function POST(req: Request) {
     await insertSystemMessage({
       bookingId: booking.id,
       senderId: user.id,
-      receiverId: notifyUserId || (isWorker ? booking.hirer_user_id : booking.worker_user_id),
+      receiverId:
+        notifyUserId || (isWorker ? booking.hirer_user_id : booking.worker_user_id),
       content: systemMessage,
     });
+
+    if (nextStatus === "in_progress" && hirerProfile?.email) {
+      await enqueueEmail({
+        userId: hirerProfile.id,
+        toEmail: hirerProfile.email,
+        subject: "Work started",
+        html: workStartedEmail({
+          userName: hirerProfile.full_name || "there",
+          bookingTitle,
+          location: locationText,
+        }),
+        emailType: "booking_in_progress",
+        meta: {
+          booking_id: booking.id,
+          status: nextStatus,
+          updated_by: user.id,
+          created_at: now,
+        },
+      });
+    }
+
+    if (nextStatus === "worker_marked_done" && hirerProfile?.email) {
+      await enqueueEmail({
+        userId: hirerProfile.id,
+        toEmail: hirerProfile.email,
+        subject: "Worker marked booking as done",
+        html: workMarkedDoneEmail({
+          userName: hirerProfile.full_name || "there",
+          bookingTitle,
+          location: locationText,
+        }),
+        emailType: "booking_worker_marked_done",
+        meta: {
+          booking_id: booking.id,
+          status: nextStatus,
+          updated_by: user.id,
+          created_at: now,
+        },
+      });
+    }
+
+    if (nextStatus === "completed" && workerProfile?.email) {
+      await enqueueEmail({
+        userId: workerProfile.id,
+        toEmail: workerProfile.email,
+        subject: "Booking completed",
+        html: bookingCompletedEmail({
+          userName: workerProfile.full_name || "there",
+          bookingTitle,
+          location: locationText,
+        }),
+        emailType: "booking_completed",
+        meta: {
+          booking_id: booking.id,
+          status: nextStatus,
+          updated_by: user.id,
+          created_at: now,
+        },
+      });
+    }
+
+    if (nextStatus === "cancelled") {
+      if (hirerProfile?.email) {
+        await enqueueEmail({
+          userId: hirerProfile.id,
+          toEmail: hirerProfile.email,
+          subject: "Booking cancelled",
+          html: bookingCancelledEmail({
+            userName: hirerProfile.full_name || "there",
+            bookingTitle,
+            location: locationText,
+            reason: "This booking has been cancelled.",
+          }),
+          emailType: "booking_cancelled",
+          meta: {
+            booking_id: booking.id,
+            status: nextStatus,
+            updated_by: user.id,
+            created_at: now,
+          },
+        });
+      }
+
+      if (workerProfile?.email) {
+        await enqueueEmail({
+          userId: workerProfile.id,
+          toEmail: workerProfile.email,
+          subject: "Booking cancelled",
+          html: bookingCancelledEmail({
+            userName: workerProfile.full_name || "there",
+            bookingTitle,
+            location: locationText,
+            reason: "This booking has been cancelled.",
+          }),
+          emailType: "booking_cancelled",
+          meta: {
+            booking_id: booking.id,
+            status: nextStatus,
+            updated_by: user.id,
+            created_at: now,
+          },
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -301,6 +438,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("bookings/progress error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Server error" },
+      { status: 500 }
+    );
   }
 }

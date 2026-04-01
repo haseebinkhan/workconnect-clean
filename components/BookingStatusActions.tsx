@@ -2,12 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BOOKING_STATUS } from "@/lib/constants";
 
 type BookingStatusActionsProps = {
   bookingId: string;
   currentStatus: string;
   role: "worker" | "hirer";
+};
+
+type BookingAction = {
+  nextStatus:
+    | "accepted"
+    | "cancelled"
+    | "in_progress"
+    | "worker_marked_done"
+    | "completed";
+  label: string;
+  loadingLabel: string;
+  className: string;
 };
 
 export default function BookingStatusActions({
@@ -19,9 +30,17 @@ export default function BookingStatusActions({
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [error, setError] = useState("");
 
+  if (!bookingId || !currentStatus) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Missing booking details.
+      </div>
+    );
+  }
+
   const actions = getActions(currentStatus, role);
 
-  async function handleAction(nextStatus: string) {
+  async function handleAction(nextStatus: BookingAction["nextStatus"]) {
     const confirmed = window.confirm(
       `Are you sure you want to change this booking to "${nextStatus}"?`
     );
@@ -81,14 +100,19 @@ export default function BookingStatusActions({
           disabled={loadingStatus !== null}
           className={action.className}
         >
-          {loadingStatus === action.nextStatus ? action.loadingLabel : action.label}
+          {loadingStatus === action.nextStatus
+            ? action.loadingLabel
+            : action.label}
         </button>
       ))}
     </div>
   );
 }
 
-function getActions(currentStatus: string, role: "worker" | "hirer") {
+function getActions(
+  currentStatus: string,
+  role: "worker" | "hirer"
+): BookingAction[] {
   if (role === "worker") {
     if (currentStatus === "pending") {
       return [
@@ -137,25 +161,6 @@ function getActions(currentStatus: string, role: "worker" | "hirer") {
           className:
             "w-full rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60",
         },
-      ];
-    }
-  }
-
-  if (role === "hirer") {
-    if (currentStatus === "worker_marked_done") {
-      return [
-        {
-          nextStatus: "completed",
-          label: "Confirm completion",
-          loadingLabel: "Confirming...",
-          className:
-            "w-full rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60",
-        },
-      ];
-    }
-
-    if (currentStatus === "pending" || currentStatus === "accepted") {
-      return [
         {
           nextStatus: "cancelled",
           label: "Cancel booking",
@@ -167,6 +172,31 @@ function getActions(currentStatus: string, role: "worker" | "hirer") {
     }
   }
 
+  if (role === "hirer") {
+    if (currentStatus === "pending" || currentStatus === "accepted") {
+      return [
+        {
+          nextStatus: "cancelled",
+          label: "Cancel booking",
+          loadingLabel: "Cancelling...",
+          className:
+            "w-full rounded-2xl border border-red-300 bg-white px-5 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60",
+        },
+      ];
+    }
+
+    if (currentStatus === "worker_marked_done") {
+      return [
+        {
+          nextStatus: "completed",
+          label: "Confirm completion",
+          loadingLabel: "Confirming...",
+          className:
+            "w-full rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60",
+        },
+      ];
+    }
+  }
+
   return [];
 }
-

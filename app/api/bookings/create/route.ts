@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { buildAccess } from "@/lib/access";
 import { enqueueEmail } from "@/lib/email/queue";
+import { newRequestEmail } from "@/lib/email/events";
 
 const adminSupabase = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,36 +36,22 @@ function isValidUKFullPostcode(value: string) {
   return /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/.test(text);
 }
 
-function newRequestEmail({
-  workerName,
-  hirerName,
-  requestTitle,
-  message,
-  meetingTime,
+function buildLocationText({
+  country,
+  region,
+  city,
+  postcode,
+  areaSlug,
 }: {
-  workerName: string;
-  hirerName: string;
-  requestTitle: string;
-  message: string;
-  meetingTime: string;
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  areaSlug?: string | null;
 }) {
-  return `
-    <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:24px;">
-      <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
-        <div style="padding:24px;">
-          <h2 style="margin:0 0 16px; color:#0f172a;">New work request received</h2>
-          <p style="color:#334155;">Hi ${workerName},</p>
-          <p style="color:#334155;">
-            You received a new request from <strong>${hirerName}</strong>.
-          </p>
-          <p style="color:#334155;"><strong>Request title:</strong> ${requestTitle}</p>
-          <p style="color:#334155;"><strong>Message:</strong> ${message}</p>
-          <p style="color:#334155;"><strong>Preferred meeting time:</strong> ${meetingTime}</p>
-          <p style="margin-top:24px; color:#64748b; font-size:13px;">WorkConnect</p>
-        </div>
-      </div>
-    </div>
-  `;
+  const parts = [city, region, country].filter(Boolean);
+  const base = parts.join(", ");
+  return base || postcode || areaSlug || "Location not specified";
 }
 
 export async function POST(req: Request) {
@@ -277,7 +264,16 @@ export async function POST(req: Request) {
       hirerProfile.postcode_prefix ||
       null;
 
-    const bookingAreaSlug = areaSlug || workerProfile.area_slug || "united-kingdom";
+    const bookingAreaSlug =
+      areaSlug || workerProfile.area_slug || "united-kingdom";
+
+    const locationText = buildLocationText({
+      country: bookingCountry,
+      region: bookingRegion,
+      city: bookingCity,
+      postcode: bookingPostcodeFull,
+      areaSlug: bookingAreaSlug,
+    });
 
     const insertPayload: Record<string, unknown> = {
       hirer_user_id: user.id,
@@ -376,7 +372,16 @@ export async function POST(req: Request) {
           requestTitle: title,
           message,
           meetingTime: meetingText,
+          location: locationText,
         }),
+        emailType: "new_request",
+        meta: {
+          booking_id: booking.id,
+          hirer_user_id: user.id,
+          worker_user_id: workerUserId,
+          preferred_meeting_at: preferredMeetingAt,
+          created_at: now,
+        },
       });
     }
 

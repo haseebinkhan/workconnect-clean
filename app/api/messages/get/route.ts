@@ -78,7 +78,8 @@ export async function POST(req: Request) {
         content,
         created_at,
         is_read,
-        delivered
+        delivered,
+        message_type
       `)
       .eq("booking_id", booking.id)
       .order("created_at", { ascending: true });
@@ -90,7 +91,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const participantIds = [booking.hirer_user_id, booking.worker_user_id].filter(Boolean);
+    const participantIds = [booking.hirer_user_id, booking.worker_user_id].filter(
+      Boolean
+    );
 
     const { data: profiles } = participantIds.length
       ? await adminSupabase
