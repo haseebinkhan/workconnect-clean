@@ -340,7 +340,6 @@ export async function POST(req: Request) {
     if (workerUserProfile.email) {
       await enqueueEmail([
         {
-          kind: "new_request_received",
           userId: workerUserProfile.id,
           toEmail: workerUserProfile.email,
           subject: "New work request received",
