@@ -344,7 +344,7 @@ export async function POST(req: Request) {
           userId: workerUserProfile.id,
           toEmail: workerUserProfile.email,
           subject: "New work request received",
-          html: newRequestEmail({
+          html: queuenewRequestEmail({
             workerName: workerUserProfile.full_name || "Worker",
             hirerName: hirerProfile.full_name || "Hirer",
             requestTitle: title,
