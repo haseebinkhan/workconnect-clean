@@ -48,7 +48,7 @@ export default function SignupPage() {
     }
 
     if (!cleanRegion) {
-      setErrorMessage("Please select your UK nation.");
+      setErrorMessage("Please select UK.");
       return;
     }
 
@@ -200,8 +200,7 @@ export default function SignupPage() {
               </h2>
 
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Create your account and choose the UK nation you mainly want to
-                use the platform in.
+                Create your account and start finding local jobs or hiring trusted workers.
               </p>
 
               <form onSubmit={handleSignup} className="mt-8 space-y-5">
@@ -282,7 +281,7 @@ export default function SignupPage() {
                     htmlFor="region"
                     className="mb-2 block text-sm font-medium text-slate-700"
                   >
-                    UK nation
+                    UK 
                   </label>
                   <select
                     id="region"
