@@ -203,9 +203,14 @@ export default function BookingMessagesClient({
     booking.worker_user_id,
   ]);
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversationMessages]);
+const hasScrolledInitially = useRef(false);
+
+useEffect(() => {
+  if (!hasScrolledInitially.current) {
+    scrollRef.current?.scrollIntoView({ behavior: "auto" });
+    hasScrolledInitially.current = true;
+  }
+}, [conversationMessages]);
 
   useEffect(() => {
     void markDelivered();
