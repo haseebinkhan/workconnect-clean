@@ -17,10 +17,9 @@ export async function POST(req: Request) {
 
     const {
       data: { user },
-      error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -31,43 +30,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing bookingId." }, { status: 400 });
     }
 
-    const { data: booking, error: bookingError } = await adminSupabase
+    const { data: booking } = await adminSupabase
       .from("bookings")
-      .select(`
-        id,
-        title,
-        message,
-        status,
-        budget_amount,
-        currency_code,
-        country,
-        region,
-        city,
-        postcode,
-        area_slug,
-        preferred_meeting_at,
-        hirer_user_id,
-        worker_user_id,
-        seen_by_hirer,
-        seen_by_worker,
-        created_at,
-        updated_at,
-        deleted_at
-      `)
+      .select("*")
       .eq("id", bookingId)
-      .maybeSingle();
+      .single();
 
-    if (bookingError || !booking || booking.deleted_at) {
+    if (!booking) {
       return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
     }
 
-    const isHirer = booking.hirer_user_id === user.id;
-    const isWorker = booking.worker_user_id === user.id;
+    const isParticipant =
+      booking.hirer_user_id === user.id ||
+      booking.worker_user_id === user.id;
 
-    if (!isHirer && !isWorker) {
+    if (!isParticipant) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
+    // 🔥 FIXED QUERY
     const { data: messages, error: messagesError } = await adminSupabase
       .from("messages")
       .select(`
@@ -81,54 +62,22 @@ export async function POST(req: Request) {
         delivered,
         message_type
       `)
-      .eq("booking_id", booking.id)
+      .eq("booking_id", bookingId)
+      .not("content", "is", null) // ✅ FIX 1
+      .neq("content", "")         // ✅ FIX 2
       .order("created_at", { ascending: true });
 
     if (messagesError) {
       return NextResponse.json(
-        { error: messagesError.message || "Could not load messages." },
+        { error: messagesError.message },
         { status: 400 }
       );
     }
-
-    const participantIds = [booking.hirer_user_id, booking.worker_user_id].filter(
-      Boolean
-    );
-
-    const { data: profiles } = participantIds.length
-      ? await adminSupabase
-          .from("profiles")
-          .select("id, full_name, email, avatar_url")
-          .in("id", participantIds)
-      : { data: [] };
-
-    const profileMap = new Map((profiles || []).map((item) => [item.id, item]));
-
-    const hirer = profileMap.get(booking.hirer_user_id);
-    const worker = profileMap.get(booking.worker_user_id);
 
     return NextResponse.json({
       success: true,
       booking,
       messages: messages || [],
-      participants: {
-        hirer: hirer
-          ? {
-              id: hirer.id,
-              full_name: hirer.full_name || null,
-              email: hirer.email || null,
-              avatar_url: hirer.avatar_url || null,
-            }
-          : null,
-        worker: worker
-          ? {
-              id: worker.id,
-              full_name: worker.full_name || null,
-              email: worker.email || null,
-              avatar_url: worker.avatar_url || null,
-            }
-          : null,
-      },
     });
   } catch (error) {
     console.error("messages/get error:", error);
