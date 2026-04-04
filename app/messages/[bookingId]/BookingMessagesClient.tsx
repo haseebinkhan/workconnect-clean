@@ -163,12 +163,49 @@ export default function BookingMessagesClient({
         postcode: booking.postcode,
         areaSlug: booking.area_slug,
       }),
-    [booking.country, booking.region, booking.city, booking.postcode, booking.area_slug]
+    [
+      booking.country,
+      booking.region,
+      booking.city,
+      booking.postcode,
+      booking.area_slug,
+    ]
   );
+
+  const conversationMessages = useMemo(() => {
+    if (messages.length > 0) {
+      return messages;
+    }
+
+    if (booking.message?.trim()) {
+      return [
+        {
+          id: `initial-booking-message-${booking.id}`,
+          booking_id: booking.id,
+          sender_id: booking.hirer_user_id,
+          receiver_id: booking.worker_user_id,
+          content: booking.message,
+          created_at: booking.created_at,
+          is_read: true,
+          delivered: true,
+          message_type: "initial_request",
+        } satisfies ThreadMessage,
+      ];
+    }
+
+    return [];
+  }, [
+    messages,
+    booking.id,
+    booking.message,
+    booking.created_at,
+    booking.hirer_user_id,
+    booking.worker_user_id,
+  ]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [conversationMessages]);
 
   useEffect(() => {
     void markDelivered();
@@ -285,23 +322,65 @@ export default function BookingMessagesClient({
     }
   }
 
-async function handleRequestAction(action: string) {
-  try {
-    setWorking(true);
-    setErrorMessage("");
+  async function handleRequestAction(action: string) {
+    try {
+      setWorking(true);
+      setErrorMessage("");
 
-    const isProgressAction =
-      action === "start_work" ||
-      action === "mark_done" ||
-      action === "complete_work";
+      const isProgressAction =
+        action === "start_work" ||
+        action === "mark_done" ||
+        action === "complete_work";
 
-    if (isProgressAction) {
-      const progressStatus =
-        action === "start_work"
-          ? "in_progress"
-          : action === "mark_done"
-          ? "worker_marked_done"
-          : "completed";
+      if (isProgressAction) {
+        const progressStatus =
+          action === "start_work"
+            ? "in_progress"
+            : action === "mark_done"
+              ? "worker_marked_done"
+              : "completed";
+
+        const response = await fetch("/api/bookings/update-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bookingId,
+            status: progressStatus,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          setErrorMessage(result?.error || "Could not update request.");
+          return;
+        }
+
+        setBooking((prev) => ({
+          ...prev,
+          status: result.status || prev.status,
+        }));
+
+        await refreshThread();
+        router.refresh();
+        return;
+      }
+
+      const directStatus =
+        action === "accepted"
+          ? "accepted"
+          : action === "cancel_request"
+            ? "cancelled"
+            : action === "rejected"
+              ? "rejected"
+              : "";
+
+      if (!directStatus) {
+        setErrorMessage("Invalid action.");
+        return;
+      }
 
       const response = await fetch("/api/bookings/update-status", {
         method: "POST",
@@ -310,7 +389,7 @@ async function handleRequestAction(action: string) {
         },
         body: JSON.stringify({
           bookingId,
-          status: progressStatus,
+          status: directStatus,
         }),
       });
 
@@ -328,55 +407,13 @@ async function handleRequestAction(action: string) {
 
       await refreshThread();
       router.refresh();
-      return;
+    } catch (error) {
+      console.error("request action error:", error);
+      setErrorMessage("Could not update request.");
+    } finally {
+      setWorking(false);
     }
-
-    const directStatus =
-      action === "accepted"
-        ? "accepted"
-        : action === "cancel_request"
-        ? "cancelled"
-        : action === "rejected"
-        ? "rejected"
-        : "";
-
-    if (!directStatus) {
-      setErrorMessage("Invalid action.");
-      return;
-    }
-
-    const response = await fetch("/api/bookings/update-status", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        bookingId,
-        status: directStatus,
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      setErrorMessage(result?.error || "Could not update request.");
-      return;
-    }
-
-    setBooking((prev) => ({
-      ...prev,
-      status: result.status || prev.status,
-    }));
-
-    await refreshThread();
-    router.refresh();
-  } catch (error) {
-    console.error("request action error:", error);
-    setErrorMessage("Could not update request.");
-  } finally {
-    setWorking(false);
   }
-}
 
   const canAccept = isWorker && booking.status === "pending";
   const canWorkerCancel =
@@ -387,7 +424,7 @@ async function handleRequestAction(action: string) {
     isHirer &&
     booking.status !== "completed" &&
     booking.status !== "cancelled";
-const canStartWork = isWorker && booking.status === "accepted";
+  const canStartWork = isWorker && booking.status === "accepted";
   const canMarkDone = isWorker && booking.status === "in_progress";
   const canComplete = isHirer && booking.status === "worker_marked_done";
 
@@ -399,7 +436,9 @@ const canStartWork = isWorker && booking.status === "accepted";
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-500">Request thread</p>
+                  <p className="text-sm font-medium text-slate-500">
+                    Request thread
+                  </p>
                   <h1 className="mt-2 text-2xl font-bold text-slate-900">
                     {booking.title || "Request"}
                   </h1>
@@ -424,7 +463,9 @@ const canStartWork = isWorker && booking.status === "accepted";
                   {requestLocation}
                 </p>
                 <p>
-                  <span className="font-semibold text-slate-900">Meeting time:</span>{" "}
+                  <span className="font-semibold text-slate-900">
+                    Meeting time:
+                  </span>{" "}
                   {booking.preferred_meeting_at
                     ? formatDateTime(booking.preferred_meeting_at)
                     : "Not specified"}
@@ -537,13 +578,14 @@ const canStartWork = isWorker && booking.status === "accepted";
             </div>
 
             <div className="max-h-[60vh] space-y-4 overflow-y-auto px-6 py-6 sm:px-8">
-              {messages.length === 0 ? (
+              {conversationMessages.length === 0 ? (
                 <div className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-600">
                   No messages yet.
                 </div>
               ) : (
-                messages.map((message) => {
+                conversationMessages.map((message) => {
                   const mine = message.sender_id === currentUserId;
+                  const isInitialRequest = message.message_type === "initial_request";
 
                   return (
                     <div
@@ -557,22 +599,29 @@ const canStartWork = isWorker && booking.status === "accepted";
                             : "bg-slate-100 text-slate-900"
                         }`}
                       >
+                        {isInitialRequest ? (
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide opacity-70">
+                            Original request
+                          </div>
+                        ) : null}
+
                         <p className="whitespace-pre-wrap text-sm leading-7">
                           {message.content || ""}
                         </p>
+
                         <div
                           className={`mt-2 flex items-center justify-end gap-2 text-xs ${
                             mine ? "text-indigo-100" : "text-slate-500"
                           }`}
                         >
                           <span>{formatDateTime(message.created_at)}</span>
-                          {mine ? (
+                          {mine && !isInitialRequest ? (
                             <span>
                               {message.is_read
                                 ? "Read"
                                 : message.delivered
-                                ? "Delivered"
-                                : "Sent"}
+                                  ? "Delivered"
+                                  : "Sent"}
                             </span>
                           ) : null}
                         </div>
