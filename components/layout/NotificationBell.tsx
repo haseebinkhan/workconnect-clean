@@ -6,12 +6,9 @@ import {
   Bell,
   Briefcase,
   CheckCircle2,
-  ChevronRight,
   FileText,
   MessageSquare,
   ShieldAlert,
-  Trash2,
-  User,
   XCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -45,44 +42,31 @@ function getNotificationHref(item: NotificationRow) {
 
   if (meta.booking_id) return `/messages/${meta.booking_id}`;
 
-  if (meta.job_id && item.type === "job_application") {
-    return `/my-job-posts?job=${meta.job_id}${
-      meta.application_id ? `&application=${meta.application_id}` : ""
-    }`;
+  if (meta.job_id && meta.application_id) {
+    return `/my-job-posts?job=${meta.job_id}&application=${meta.application_id}`;
   }
 
-  if (item.type === "application_accepted" || item.type === "application_rejected") {
-    return "/my-applications";
-  }
-
-  if (item.type === "job_submitted_for_review") {
-    return "/admin";
-  }
-
-  if (item.type === "new_message") {
-    return meta.booking_id ? `/messages/${meta.booking_id}` : "/messages";
-  }
+  if (meta.job_id) return `/my-job-posts?job=${meta.job_id}`;
 
   return "/notifications";
 }
 
 function getNotificationIcon(type: string) {
-  if (type === "new_message") return MessageSquare;
-  if (type === "job_application") return FileText;
-  if (type === "application_accepted") return CheckCircle2;
-  if (type === "application_rejected") return XCircle;
-  if (type === "job_status_updated") return Briefcase;
-  if (type === "job_submitted_for_review") return ShieldAlert;
+  if (type.includes("message")) return MessageSquare;
+  if (type.includes("application")) return FileText;
+  if (type.includes("accepted")) return CheckCircle2;
+  if (type.includes("rejected")) return XCircle;
+  if (type.includes("job")) return Briefcase;
+  if (type.includes("admin")) return ShieldAlert;
   return Bell;
 }
 
 export default function NotificationBell({ userId }: { userId: string }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
 
   const unreadCount = useMemo(
@@ -114,7 +98,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
   async function markAllAsRead() {
     const ids = notifications.filter(n => !n.is_read).map(n => n.id);
-    if (ids.length === 0) return;
+    if (!ids.length) return;
 
     await supabase
       .from("notifications")
@@ -130,37 +114,24 @@ export default function NotificationBell({ userId }: { userId: string }) {
     const ok = window.confirm("Delete all notifications?");
     if (!ok) return;
 
-    try {
-      setClearing(true);
+    const ids = notifications.map(n => n.id);
+    if (!ids.length) return;
 
-      const res = await fetch("/api/notifications/clear", {
-        method: "POST",
-      });
+    await supabase
+      .from("notifications")
+      .delete()
+      .in("id", ids);
 
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        alert("Server error");
-        return;
-      }
-
-      if (!res.ok || !data.success) {
-        alert(data.message || "Failed");
-        return;
-      }
-
-      setNotifications([]);
-    } catch {
-      alert("Network error");
-    } finally {
-      setClearing(false);
-    }
+    setNotifications([]);
   }
 
   useEffect(() => {
     if (!userId) return;
+
     loadNotifications();
+
+    const interval = setInterval(loadNotifications, 10000);
+    return () => clearInterval(interval);
   }, [userId]);
 
   useEffect(() => {
@@ -197,7 +168,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
                 Read all
               </button>
               <button onClick={clearAllNotifications} className="text-xs text-red-600">
-                {clearing ? "..." : "Clear"}
+                Clear
               </button>
             </div>
           </div>

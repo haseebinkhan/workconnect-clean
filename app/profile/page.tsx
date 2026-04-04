@@ -74,6 +74,7 @@ export default async function ProfilePage() {
         .select(`
           id,
           user_id,
+          hirer_type,
           company_name,
           contact_name,
           location,
@@ -98,35 +99,13 @@ export default async function ProfilePage() {
     showPhoneAfterAccept: profile?.show_phone_after_accept ?? true,
     showWhatsappAfterAccept: profile?.show_whatsapp_after_accept ?? true,
 
-    country:
-      workerProfile?.country ||
-      profile?.country ||
-      "United Kingdom",
-
-    region:
-      workerProfile?.region ||
-      profile?.region ||
-      "",
-
-    city:
-      workerProfile?.city ||
-      profile?.city ||
-      "",
-
-    areaSlug:
-      workerProfile?.area_slug ||
-      profile?.area_slug ||
-      "",
-
+    country: workerProfile?.country || profile?.country || "United Kingdom",
+    region: workerProfile?.region || profile?.region || "",
+    city: workerProfile?.city || profile?.city || "",
+    areaSlug: workerProfile?.area_slug || profile?.area_slug || "",
     postcodePrefix:
-      workerProfile?.postcode_prefix ||
-      profile?.postcode_prefix ||
-      "",
-
-    postcodeFull:
-      workerProfile?.postcode_full ||
-      profile?.postcode_full ||
-      "",
+      workerProfile?.postcode_prefix || profile?.postcode_prefix || "",
+    postcodeFull: workerProfile?.postcode_full || profile?.postcode_full || "",
 
     workerProfile: {
       id: workerProfile?.id ?? null,
@@ -155,18 +134,18 @@ export default async function ProfilePage() {
           : {},
       availabilityNotes: workerProfile?.availability_notes ?? "",
       certifications: Array.isArray(workerProfile?.certifications)
-        ? workerProfile!.certifications
+        ? workerProfile.certifications
         : [],
       experienceYears:
         workerProfile?.experience_years != null
           ? String(workerProfile.experience_years)
           : "",
-      postcode:
-        workerProfile?.postcode ?? "",
+      postcode: workerProfile?.postcode ?? "",
     },
 
     hirerProfile: {
       id: hirerProfile?.id ?? null,
+      hirerType: hirerProfile?.hirer_type ?? "individual",
       companyName: hirerProfile?.company_name ?? "",
       contactName: hirerProfile?.contact_name ?? "",
       location: hirerProfile?.location ?? "",
